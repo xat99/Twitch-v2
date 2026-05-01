@@ -85,7 +85,8 @@ def start_miner():
     ]
 
     def sync_process():
-        time.sleep(60) 
+        # Rövidebb indulási várakozás
+        time.sleep(30) 
         while True:
             try:
                 is_logged_in = False
@@ -93,7 +94,7 @@ def start_miner():
                     for s in twitch_miner.streamers:
                         if not hasattr(s, 'channel_points') or s.channel_points is None: continue
                         
-                        # --- ÚJÍTÁS: Lekérjük, hogy ÉLŐBEN van-e! ---
+                        # --- LEKÉRJÜK AZ ÉLŐ STÁTUSZT ---
                         is_online = getattr(s, 'is_online', False)
                         
                         raw = str(s.channel_points).lower()
@@ -104,7 +105,7 @@ def start_miner():
                                 {"channel_name": s.username}, 
                                 {
                                     "$push": {"history": {"$each": [pts], "$slice": -50}},
-                                    "$set": {"is_online": is_online} # Elmentjük az élő státuszt is!
+                                    "$set": {"is_online": is_online} # Beírjuk a MongoDB-be, hogy Élő!
                                 }, 
                                 upsert=True
                             )
@@ -119,7 +120,9 @@ def start_miner():
                                 upsert=True
                             )
             except Exception as e: pass
-            time.sleep(180)
+            
+            # --- 3 PERC HELYETT MOST 1 PERCENKÉNT FRISSÍT ---
+            time.sleep(60)
 
     threading.Thread(target=sync_process, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
