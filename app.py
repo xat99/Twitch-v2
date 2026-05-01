@@ -10,6 +10,7 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'default_secret_key_2024')
 
+# MongoDB csatlakozás
 mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
 client = MongoClient(mongo_url)
 db = client['twitch_miner_web']
@@ -25,7 +26,6 @@ def home():
     if 'username' in session:
         accounts = list(twitch_data_collection.find({}))
         for acc in accounts:
-            # JAVÍTÁS: Az ObjectId-t stringgé alakítjuk a JSON serializációhoz
             acc['_id'] = str(acc['_id'])
             history = acc.get('history', [0])
             acc['current_points'] = history[-1]
@@ -47,9 +47,17 @@ def logout():
     return redirect(url_for('login'))
 
 if __name__ == '__main__':
-    print("Log: Twitch bányász indítása a háttérben...")
-    miner_thread = threading.Thread(target=start_miner, daemon=True)
-    miner_thread.start()
-
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    
+    # --- JAVÍTÁS: A weboldalt indítjuk el a háttérben ---
+    print(f"Log: Flask weboldal indítása a háttérben a {port} porton...")
+    flask_thread = threading.Thread(
+        target=lambda: app.run(host='0.0.0.0', port=port, use_reloader=False)
+    )
+    flask_thread.daemon = True
+    flask_thread.start()
+
+    # --- A bányászt indítjuk a FŐ SZÁLON ---
+    # Így a signal hiba és a TypeError is megszűnik!
+    print("Log: Twitch bányász indítása a fő szálon...")
+    start_miner()
