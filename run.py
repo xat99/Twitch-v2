@@ -25,7 +25,6 @@ from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, Streame
 def start_miner():
     load_dotenv()
     
-    # Környezeti adatok és Adatbázis kapcsolat
     username = os.getenv('TWITCH_USERNAME', '0szaby0') 
     mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
     client = MongoClient(mongo_url)
@@ -35,68 +34,37 @@ def start_miner():
 
     session_file = f"{username}.pkl"
 
-    # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
+    # --- 1. MUNKAMENET VISSZATÖLTÉSE (Indításkor) ---
     saved_session = config_collection.find_one({"type": "session_file", "user": username})
     if saved_session:
         try:
             with open(session_file, "wb") as f:
                 f.write(base64.b64decode(saved_session['data']))
-            print(f"Log: Belépési adatok ({session_file}) visszatöltve a MongoDB-ből.")
+            print(f"Log: Belépési adatok ({session_file}) sikeresen visszatöltve a MongoDB-ből.")
         except Exception as e:
             print(f"Log: Hiba a visszatöltéskor: {e}")
 
-    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ (JAVÍTOTT ÉRTESÍTŐKKEL) ---
+    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
-        claim_drops_startup=False,                                  
         priority=[Priority.STREAK, Priority.DROPS, Priority.ORDER],
-        enable_analytics=False,                                     
         logger_settings=LoggerSettings(
             save=True, console_level=logging.INFO, auto_clear=True, emoji=True, colored=True,
-            color_palette=ColorPalette(
-                STREAMER_online="GREEN", streamer_offline="red", BET_wiN=Fore.MAGENTA
-            ),
-            telegram=Telegram(
-                chat_id=5856025580, token="7386173970:AAGAmPAXATMROzvEG5E2XLFmhryQhQBHO0g",
-                events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE, Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM, Events.DROP_STATUS],
-            ),
-            discord=Discord(
-                webhook_api="https://discord.com/api/webhooks/1229673281963950131/-4kkB66hh0hm8tqxzUDhqTbfljlPZ2lNP1dNGox0QuJoXJoPFyF-8cYLxFFIDN1AhSW3",
-                events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE, Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM, Events.DROP_STATUS],
-            ),
-            # JAVÍTVA: method hozzáadva
-            webhook=Webhook(
-                endpoint="https://example.com/webhook", 
-                method="POST", 
-                events=[Events.STREAMER_ONLINE, Events.BET_LOSE]
-            ),
-            matrix=Matrix(
-                username="twitch_miner", password="...", homeserver="matrix.org", room_id="...", 
-                events=[Events.STREAMER_ONLINE]
-            ),
-            # JAVÍTVA: priority és sound hozzáadva
-            pushover=Pushover(
-                userkey="YOUR_USER_KEY", 
-                token="YOUR_APP_TOKEN", 
-                priority=0, 
-                sound="pushover", 
-                events=[Events.CHAT_MENTION, Events.DROP_CLAIM]
-            ),
-            gotify=Gotify(
-                endpoint="https://example.com/message?token=TOKEN", 
-                priority=8, 
-                events=[Events.STREAMER_ONLINE, Events.BET_LOSE]
-            ),
+            color_palette=ColorPalette(STREAMER_online="GREEN", streamer_offline="red", BET_wiN=Fore.MAGENTA),
+            telegram=Telegram(chat_id=5856025580, token="7386173970:AAGAmPAXATMROzvEG5E2XLFmhryQhQBHO0g", events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE, Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM, Events.DROP_STATUS]),
+            discord=Discord(webhook_api="https://discord.com/api/webhooks/1229673281963950131/-4kkB66hh0hm8tqxzUDhqTbfljlPZ2lNP1dNGox0QuJoXJoPFyF-8cYLxFFIDN1AhSW3", events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE, Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM, Events.DROP_STATUS]),
+            webhook=Webhook(endpoint="https://example.com/webhook", method="POST", events=[Events.STREAMER_ONLINE, Events.BET_LOSE]),
+            matrix=Matrix(username="twitch_miner", password="...", homeserver="matrix.org", room_id="...", events=[Events.STREAMER_ONLINE]),
+            pushover=Pushover(userkey="TOKEN", token="TOKEN", priority=0, sound="pushover", events=[Events.CHAT_MENTION]),
+            gotify=Gotify(endpoint="https://example.com/gotify", priority=8, events=[Events.STREAMER_ONLINE]),
         ),
         streamer_settings=StreamerSettings(
-            make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True,
-            chat=ChatPresence.ONLINE,
+            make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, chat=ChatPresence.ONLINE,
             bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, delay_mode=DelayMode.FROM_END, delay=6)
         )
     )
 
-    # --- 3. CSATORNALISTA ---
     streamers_list = [
         Streamer("ulrikch", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800)))),
         Streamer("nexuspwn", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800)))),
@@ -114,45 +82,38 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- 4. SZINKRONIZÁLÓ ---
-    def sync_to_mongodb():
-        time.sleep(90)
+    # --- 3. GYORSÍTOTT SZINKRONIZÁLÓ ---
+    def sync_process():
+        # Csökkentett várakozás, hogy gyorsabban mentsen!
+        time.sleep(45) 
         while True:
             try:
-                # 1. Munkamenet mentése
                 if os.path.exists(session_file):
-                    with open(session_file, "rb") as f:
-                        config_collection.update_one(
-                            {"type": "session_file", "user": username},
-                            {"$set": {"data": base64.b64encode(f.read()).decode('utf-8'), "last_sync": time.time()}},
-                            upsert=True
-                        )
-
-                # 2. Pontszámok szinkronizálása ('k' javítással)
+                    # CSAK AKKOR MENTÜNK, HA A FÁJL NEM ÜRES
+                    if os.path.getsize(session_file) > 100:
+                        with open(session_file, "rb") as f:
+                            config_collection.update_one(
+                                {"type": "session_file", "user": username},
+                                {"$set": {"data": base64.b64encode(f.read()).decode('utf-8'), "last_sync": time.time()}},
+                                upsert=True
+                            )
+                
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
                         raw = str(s.balance).lower()
-                        clean_points = 0
-                        try:
-                            if 'k' in raw:
-                                clean_points = int(float(raw.replace('k', '')) * 1000)
-                            else:
-                                clean_points = int(float(raw))
-                            
-                            if clean_points > 0:
-                                twitch_data_collection.update_one(
-                                    {"channel_name": s.username},
-                                    {"$push": {"history": {"$each": [clean_points], "$slice": -50}}},
-                                    upsert=True
-                                )
-                        except:
-                            continue
-                print("Log: Dashboard és munkamenet adatok szinkronizálva.")
+                        pts = int(float(raw.replace('k', '')) * 1000) if 'k' in raw else int(float(raw))
+                        if pts > 0:
+                            twitch_data_collection.update_one(
+                                {"channel_name": s.username},
+                                {"$push": {"history": {"$each": [pts], "$slice": -50}}},
+                                upsert=True
+                            )
+                print("Log: Sikeres mentés a MongoDB-be.")
             except Exception as e:
                 print(f"Log: Szinkronizációs hiba: {e}")
-            time.sleep(180)
+            time.sleep(120) # 2 percenként ment
 
-    threading.Thread(target=sync_to_mongodb, daemon=True).start()
+    threading.Thread(target=sync_process, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
 
 if __name__ == '__main__':
