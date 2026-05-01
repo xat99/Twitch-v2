@@ -2,93 +2,122 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <title>Twitch Miner Vezérlőpult</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twitch Miner Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background-color: #0e0e10; color: #efeff1; }
-        .card { background-color: #18181b; border: 1px solid #303032; }
+        /* Egyedi görgetősáv a dark mode-hoz */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1f2937; }
+        ::-webkit-scrollbar-thumb { background: #9146FF; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #772ce8; }
     </style>
 </head>
-<body class="min-h-screen p-8">
+<body class="bg-gray-900 text-white font-sans antialiased min-h-screen">
 
-    <div class="max-w-7xl mx-auto flex justify-between items-center mb-10 pb-5 border-b border-gray-800">
-        <div>
-            <h1 class="text-3xl font-bold">Twitch Miner <span style="color: #bf94ff;">Dashboard</span></h1>
-            <p class="text-gray-400 mt-1">Bejelentkezve mint: <span class="text-white font-semibold">{{ username }}</span></p>
+    <nav class="bg-gray-800 border-b border-[#9146FF] shadow-lg px-6 py-4 flex justify-between items-center sticky top-0 z-40">
+        <div class="flex items-center gap-3">
+            <svg class="w-8 h-8 text-[#9146FF]" fill="currentColor" viewBox="0 0 24 24"><path d="M11.571 4.714h1.715v5.143H11.57zm4.715 0H18v5.143h-1.714zM6 0L1.714 4.286v15.428h5.143V24l4.286-4.286h3.428L22.286 12V0zm14.571 11.143l-3.428 3.428h-3.429l-3 3v-3H6.857V1.714h13.714Z"/></svg>
+            <h1 class="text-2xl font-bold tracking-wider">Miner <span class="text-[#9146FF]">Dashboard</span></h1>
         </div>
-        <a href="/logout" class="bg-red-600 hover:bg-red-700 text-white py-2 px-4 rounded-lg font-bold transition duration-200">Kijelentkezés</a>
-    </div>
+        <div class="flex items-center gap-4">
+            <span class="text-gray-400 text-sm hidden md:block">Üdvözöllek, <span class="text-white font-semibold">{{ username }}</span>!</span>
+            <a href="/logout" class="bg-red-500 hover:bg-red-600 transition px-4 py-2 rounded-lg text-sm font-semibold shadow-md">Kijelentkezés</a>
+        </div>
+    </nav>
 
-    <div class="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {% for account in accounts %}
-        <div class="card rounded-xl p-6 shadow-xl relative overflow-hidden">
-            <div class="flex justify-between items-start mb-4">
-                <h2 class="text-xl font-bold">{{ account.channel_name }}</h2>
-            </div>
-            
-            <div class="mb-4">
-                <p class="text-gray-400 text-sm">Aktuális pontok</p>
-                <div class="flex items-end gap-3 mt-1">
-                    <span class="text-4xl font-extrabold text-white">{{ "{:,}".format(account.current_points).replace(',', ' ') }}</span>
-                    
-                    {% if account.diff > 0 %}
-                        <span class="text-green-500 font-bold flex items-center text-lg">
-                            <svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
-                            +{{ account.diff }}
-                        </span>
-                    {% elif account.diff < 0 %}
-                        <span class="text-red-500 font-bold flex items-center text-lg">
-                            <svg class="w-5 h-5 mr-1 transform rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 10l7-7m0 0l7 7m-7-7v18"></path></svg>
-                            {{ account.diff }}
-                        </span>
+    <main class="max-w-7xl mx-auto px-4 py-8">
+        <h2 class="text-xl font-bold mb-6 border-b border-gray-700 pb-2">Csatornák Állapota</h2>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {% for acc in accounts %}
+            <div class="bg-gray-800 rounded-xl p-5 border border-gray-700 shadow-xl relative overflow-hidden group hover:border-[#9146FF] transition duration-300">
+                
+                <div class="absolute top-4 right-4">
+                    {% if acc.is_online %}
+                        <span class="bg-red-500 text-white text-xs font-bold px-3 py-1 rounded-full uppercase animate-pulse shadow-[0_0_10px_rgba(239,68,68,0.6)]">Live</span>
                     {% else %}
-                        <span class="text-gray-500 font-bold flex items-center text-lg">
-                            0
-                        </span>
+                        <span class="bg-gray-600 text-gray-300 text-xs font-bold px-3 py-1 rounded-full uppercase">Offline</span>
                     {% endif %}
                 </div>
-            </div>
 
-            <div class="h-32 w-full mt-6">
-                <canvas id="chart-{{ loop.index }}"></canvas>
+                <div class="flex items-center gap-4 mb-4">
+                    <div class="w-14 h-14 rounded-full bg-gradient-to-br from-[#9146FF] to-purple-900 flex items-center justify-center text-xl font-bold uppercase shadow-lg border-2 border-gray-800">
+                        {{ acc.channel_name[:2] }}
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-bold text-gray-100">{{ acc.channel_name }}</h3>
+                        <p class="text-sm text-gray-400">Twitch Streamer</p>
+                    </div>
+                </div>
+
+                <div class="bg-gray-900 rounded-lg p-4 mb-4 border border-gray-700">
+                    <p class="text-xs text-gray-400 uppercase tracking-widest mb-1">Gyűjtött Pontok</p>
+                    <div class="flex items-end gap-2">
+                        <span class="text-2xl font-black text-green-400">{{ acc.formatted_points }}</span>
+                        <span class="text-sm text-[#9146FF] font-bold mb-1">XP</span>
+                    </div>
+                    {% if acc.diff > 0 %}
+                        <p class="text-xs text-green-500 mt-2 font-medium">↑ +{{ acc.diff }} legutóbb</p>
+                    {% endif %}
+                </div>
+
+                {% if acc.is_online %}
+                    <button onclick="openChat('{{ acc.channel_name }}')" class="w-full bg-[#9146FF] hover:bg-[#772ce8] text-white font-bold py-2 px-4 rounded-lg transition duration-200 shadow-[0_4px_14px_0_rgba(145,70,255,0.39)] flex items-center justify-center gap-2">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>
+                        Írás a Chatre
+                    </button>
+                {% else %}
+                    <button disabled class="w-full bg-gray-700 text-gray-500 font-bold py-2 px-4 rounded-lg cursor-not-allowed">
+                        Nincs adás
+                    </button>
+                {% endif %}
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
+    </main>
+
+    <div id="chatModal" class="fixed inset-0 bg-black bg-opacity-80 z-50 hidden flex items-center justify-center p-4 backdrop-blur-sm transition-opacity">
+        <div class="bg-gray-800 rounded-xl shadow-2xl w-full max-w-md h-[80vh] flex flex-col border border-gray-600 overflow-hidden relative">
+            
+            <div class="bg-gray-900 px-4 py-3 border-b border-gray-700 flex justify-between items-center">
+                <h3 id="chatTitle" class="text-lg font-bold text-[#9146FF]">Csatorna Chat</h3>
+                <button onclick="closeChat()" class="text-gray-400 hover:text-white transition bg-gray-800 rounded-full p-1">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+            </div>
+            
+            <div class="flex-grow bg-black" id="chatContainer">
+                </div>
+        </div>
     </div>
 
     <script>
-        const accountsData = {{ accounts | tojson }};
-        
-        accountsData.forEach((account, index) => {
-            const ctx = document.getElementById(`chart-${index + 1}`).getContext('2d');
+        function openChat(channelName) {
+            document.getElementById('chatTitle').innerText = channelName + " Chatje";
+            const chatContainer = document.getElementById('chatContainer');
             
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: account.history.map((_, i) => `Mentés ${i+1}`),
-                    datasets: [{
-                        label: 'Pontszám',
-                        data: account.history,
-                        backgroundColor: '#bf94ff',
-                        borderRadius: 4,
-                        barPercentage: 0.6
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: { legend: { display: false }, tooltip: { enabled: true } },
-                    scales: {
-                        x: { display: false }, 
-                        y: { 
-                            display: false,
-                            beginAtZero: true 
-                        }  
-                    }
-                }
-            });
-        });
+            // Lekérjük a jelenlegi weboldalad URL-jét, ami kötelező a Twitch biztonságához
+            const currentHost = window.location.hostname;
+            
+            // Beágyazzuk a hivatalos Twitch chatet
+            chatContainer.innerHTML = `
+                <iframe 
+                    src="https://www.twitch.tv/embed/${channelName}/chat?parent=${currentHost}&darkpopout"
+                    height="100%" 
+                    width="100%" 
+                    frameborder="0">
+                </iframe>
+            `;
+            
+            document.getElementById('chatModal').classList.remove('hidden');
+        }
+
+        function closeChat() {
+            document.getElementById('chatModal').classList.add('hidden');
+            // Töröljük az iframe-et bezáráskor, hogy ne egye a memóriát
+            document.getElementById('chatContainer').innerHTML = '';
+        }
     </script>
 </body>
 </html>
