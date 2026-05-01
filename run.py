@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 import base64
+import json
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -34,16 +35,18 @@ def start_miner():
     session_file = f"{username}.pkl"
 
     # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
+    print(f"Log: Keresés a MongoDB-ben: {username} munkamenete...", flush=True)
     saved_session = config_collection.find_one({"type": "session_file", "user": username})
+    
     if saved_session:
         try:
             with open(session_file, "wb") as f:
                 f.write(base64.b64decode(saved_session['data']))
-            print(f"Log: Belépési adatok ({session_file}) sikeresen visszatöltve a MongoDB-ből.")
+            print(f"Log: Belépési adatok ({session_file}) AZONNAL visszatöltve a MongoDB-ből.", flush=True)
         except Exception as e:
-            print(f"Log: Hiba a visszatöltéskor: {e}")
+            print(f"Log: Hiba a visszatöltéskor: {e}", flush=True)
 
-    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ ---
+    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ (AZ ÖSSZES ÉRTESÍTŐVEL) ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
@@ -81,12 +84,38 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- 3. JAVÍTOTT SZINKRONIZÁLÓ (A 'channel_points' használatával) ---
+    # --- 3. BIZTONSÁGOS SZINKRONIZÁLÓ ---
     def sync_process():
         time.sleep(45) 
         while True:
             try:
-                if os.path.exists(session_file):
+                is_logged_in = False
+                
+                # 1. Lekérjük a pontokat, és ellenőrizzük, sikeres volt-e a belépés
+                if hasattr(twitch_miner, 'streamers'):
+                    for s in twitch_miner.streamers:
+                        if not hasattr(s, 'channel_points') or s.channel_points is None:
+                            continue
+                            
+                        raw = str(s.channel_points).lower()
+                        pts = 0
+                        try:
+                            if 'k' in raw: pts = int(float(raw.replace('k', '')) * 1000)
+                            elif 'm' in raw: pts = int(float(raw.replace('m', '')) * 1000000)
+                            else: pts = int(float(raw))
+                        except:
+                            pts = 0
+                            
+                        if pts > 0:
+                            is_logged_in = True # LÁTJUK A PONTOKAT, BENT VAGYUNK!
+                            twitch_data_collection.update_one(
+                                {"channel_name": s.username},
+                                {"$push": {"history": {"$each": [pts], "$slice": -50}}},
+                                upsert=True
+                            )
+                
+                # 2. CSAK AKKOR MENTJÜK A FÁJLT, HA TUDJUK, HOGY JÓ (BENT VAGYUNK)
+                if is_logged_in and os.path.exists(session_file):
                     if os.path.getsize(session_file) > 100:
                         with open(session_file, "rb") as f:
                             config_collection.update_one(
@@ -94,35 +123,12 @@ def start_miner():
                                 {"$set": {"data": base64.b64encode(f.read()).decode('utf-8'), "last_sync": time.time()}},
                                 upsert=True
                             )
-                
-                if hasattr(twitch_miner, 'streamers'):
-                    for s in twitch_miner.streamers:
-                        # ITT VOLT A HIBA JAVÍTVA: balance -> channel_points
-                        if not hasattr(s, 'channel_points') or s.channel_points is None:
-                            continue
-                            
-                        raw = str(s.channel_points).lower()
-                        pts = 0
-                        
-                        try:
-                            if 'k' in raw:
-                                pts = int(float(raw.replace('k', '')) * 1000)
-                            elif 'm' in raw:
-                                pts = int(float(raw.replace('m', '')) * 1000000)
-                            else:
-                                pts = int(float(raw))
-                        except:
-                            pts = 0
-                            
-                        if pts > 0:
-                            twitch_data_collection.update_one(
-                                {"channel_name": s.username},
-                                {"$push": {"history": {"$each": [pts], "$slice": -50}}},
-                                upsert=True
-                            )
-                print("Log: Sikeres mentés a MongoDB-be (Munkamenet + Pontok).")
+                        print("Log: Sikeres mentés a MongoDB-be (Pontok + Jó Munkamenet).", flush=True)
+                elif not is_logged_in:
+                    print("Log: Várakozás a sikeres bejelentkezésre, fájl mentése késleltetve...", flush=True)
+
             except Exception as e:
-                print(f"Log: Szinkronizációs hiba: {e}")
+                print(f"Log: Szinkronizációs hiba: {e}", flush=True)
             time.sleep(120)
 
     threading.Thread(target=sync_process, daemon=True).start()
