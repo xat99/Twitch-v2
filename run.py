@@ -10,11 +10,7 @@ from TwitchChannelPointsMiner import TwitchChannelPointsMiner
 from TwitchChannelPointsMiner.logger import LoggerSettings, ColorPalette
 from TwitchChannelPointsMiner.classes.Chat import ChatPresence
 from TwitchChannelPointsMiner.classes.Discord import Discord
-from TwitchChannelPointsMiner.classes.Webhook import Webhook
 from TwitchChannelPointsMiner.classes.Telegram import Telegram
-from TwitchChannelPointsMiner.classes.Matrix import Matrix
-from TwitchChannelPointsMiner.classes.Pushover import Pushover
-from TwitchChannelPointsMiner.classes.Gotify import Gotify
 from TwitchChannelPointsMiner.classes.Settings import Priority, Events, FollowersOrder
 from TwitchChannelPointsMiner.classes.entities.Bet import Strategy, BetSettings, Condition, OutcomeKeys, FilterCondition, DelayMode
 from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, StreamerSettings
@@ -22,16 +18,15 @@ from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, Streame
 def start_miner():
     load_dotenv()
 
-    # MongoDB kapcsolat - Rugalmas megoldás
     mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
     client = MongoClient(mongo_url)
     db = client['twitch_miner_web']
     twitch_data_collection = db['twitch_data']
 
+    # KIVETTEM a handle_signals=False-t, mert hibát dobott
     twitch_miner = TwitchChannelPointsMiner(
         username=os.getenv('TWITCH_USERNAME', ''),                  
-        password=os.getenv('TWITCH_PASSWORD', ''),
-        handle_signals=False,  # JAVÍTÁS: Ez megakadályozza a szál-hibát Renderen
+        password=os.getenv('TWITCH_PASSWORD', ''),                  
         claim_drops_startup=False,                                  
         priority=[Priority.STREAK, Priority.DROPS, Priority.ORDER],
         enable_analytics=False,                                     
@@ -63,7 +58,6 @@ def start_miner():
             make_predictions=True,
             follow_raid=True,
             claim_drops=True,
-            claim_moments=True,
             watch_streak=True,
             chat=ChatPresence.ONLINE,
             bet=BetSettings(
@@ -103,6 +97,3 @@ def start_miner():
             twitch_data_collection.insert_one({"channel_name": name, "history": [0]})
 
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
-
-if __name__ == '__main__':
-    start_miner()
