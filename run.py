@@ -5,7 +5,6 @@ import threading
 import time
 import base64
 import shutil
-import requests # <-- NAGYON FONTOS: requirements.txt-be írd be!
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -33,20 +32,21 @@ def start_miner():
     twitch_data_collection = db['twitch_data']
     config_collection = db['config']
 
+    session_file_root = f"{username}.pkl"
     session_file_cookies = os.path.join("cookies", f"{username}.pkl")
 
-    # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
+    if os.path.exists(session_file_root):
+        os.makedirs("cookies", exist_ok=True)
+        shutil.copy(session_file_root, session_file_cookies)
+
     saved_session = config_collection.find_one({"type": "session_file", "user": username})
     if saved_session:
         try:
             os.makedirs("cookies", exist_ok=True)
             with open(session_file_cookies, "wb") as f:
                 f.write(base64.b64decode(saved_session['data']))
-            print(f"Log: Munkamenet visszatöltve a MongoDB-ből.", flush=True)
-        except Exception as e:
-            print(f"Log: Hiba a MongoDB visszatöltéskor: {e}", flush=True)
+        except: pass
 
-    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
@@ -84,28 +84,33 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- 3. EXPORTÁLÓ ÉS SZINKRONIZÁLÓ SZÁL ---
     def sync_process():
-        print("Log: Szinkronizáló szál elindult, várakozás 60mp...", flush=True)
         time.sleep(60) 
-        file_uploaded_to_api = False 
-        
         while True:
             try:
                 is_logged_in = False
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
-                        if hasattr(s, 'channel_points') and s.channel_points is not None:
+                        if not hasattr(s, 'channel_points') or s.channel_points is None: continue
+                        
+                        # --- ÚJÍTÁS: Lekérjük, hogy ÉLŐBEN van-e! ---
+                        is_online = getattr(s, 'is_online', False)
+                        
+                        raw = str(s.channel_points).lower()
+                        pts = int(float(raw.replace('k', '')) * 1000) if 'k' in raw else int(float(raw))
+                        if pts > 0:
                             is_logged_in = True
-                            # Pontszámok mentése MongoDB-be
-                            raw = str(s.channel_points).lower()
-                            pts = int(float(raw.replace('k', '')) * 1000) if 'k' in raw else int(float(raw))
-                            twitch_data_collection.update_one({"channel_name": s.username}, {"$push": {"history": {"$each": [pts], "$slice": -50}}}, upsert=True)
+                            twitch_data_collection.update_one(
+                                {"channel_name": s.username}, 
+                                {
+                                    "$push": {"history": {"$each": [pts], "$slice": -50}},
+                                    "$set": {"is_online": is_online} # Elmentjük az élő státuszt is!
+                                }, 
+                                upsert=True
+                            )
                 
-                if is_logged_in:
-                    print("Log: Sikeres bejelentkezést érzékelek!", flush=True)
-                    if os.path.exists(session_file_cookies):
-                        # Mentés MongoDB-be
+                if is_logged_in and os.path.exists(session_file_cookies):
+                    if os.path.getsize(session_file_cookies) > 100:
                         with open(session_file_cookies, "rb") as f:
                             encoded_file = base64.b64encode(f.read()).decode('utf-8')
                             config_collection.update_one(
@@ -113,28 +118,8 @@ def start_miner():
                                 {"$set": {"data": encoded_file, "last_sync": time.time()}},
                                 upsert=True
                             )
-                        
-                        # EXPORTÁLÁS (Link generálás)
-                        if not file_uploaded_to_api:
-                            print("Log: Fájl feltöltése a file.io-ra...", flush=True)
-                            with open(session_file_cookies, "rb") as f:
-                                response = requests.post('https://file.io', files={'file': f})
-                                if response.status_code == 200:
-                                    link = response.json().get('link')
-                                    print("\n" + "="*50, flush=True)
-                                    print(f"SZERESD EZT A LINKET: {link}", flush=True)
-                                    print("="*50 + "\n", flush=True)
-                                    file_uploaded_to_api = True
-                                else:
-                                    print(f"Log: File.io hiba: {response.status_code}", flush=True)
-                    else:
-                        print(f"Log: HIBA! A fájl nem található itt: {session_file_cookies}", flush=True)
-                else:
-                    print("Log: Még nem látok pontokat, várakozás a belépésre...", flush=True)
-
-            except Exception as e:
-                print(f"Log: Szinkronizációs hiba történt: {e}", flush=True)
-            time.sleep(120)
+            except Exception as e: pass
+            time.sleep(180)
 
     threading.Thread(target=sync_process, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
