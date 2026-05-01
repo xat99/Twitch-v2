@@ -1,5 +1,6 @@
 import os
 import threading
+import time
 from flask import Flask, render_template, request, redirect, url_for, session
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -29,15 +30,24 @@ def home():
         processed_accounts = []
         for acc in accounts:
             acc['_id'] = str(acc['_id'])
+            
+            # Kinyerjük az adatbázisból az utolsó mentett pontszámot
             history = acc.get('history', [0])
             current_points = history[-1] if history else 0
             diff = history[-1] - history[-2] if len(history) >= 2 else 0
             
+            # --- A LÉNYEG: Minden néven átadjuk a HTML-nek, hogy biztosan megtalálja! ---
             acc['current_points'] = current_points
+            acc['channel_points'] = current_points  # <-- Ezt a nevet kereste a weboldalad!
+            acc['balance'] = current_points
             acc['diff'] = diff
+            
+            # Bónusz: Egy szépen formázott verzió (pl. 825 560), amit használhatsz a HTML-ben
+            acc['formatted_points'] = f"{current_points:,}".replace(',', ' ')
+            
             processed_accounts.append(acc)
         
-        # SORREND: Legtöbb pontos legfelül
+        # SORREND: A legtöbb ponttal rendelkező streamer (pl. Picury) lesz legfelül
         processed_accounts.sort(key=lambda x: x.get('current_points', 0), reverse=True)
         
         return render_template('dashboard.html', username=session['username'], accounts=processed_accounts, tokens=tokens)
