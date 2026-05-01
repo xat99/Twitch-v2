@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 import os
 import logging
 import threading
@@ -20,7 +19,7 @@ from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, Streame
 def start_miner():
     load_dotenv()
 
-    # MongoDB kapcsolat - Renderen a MONGO_URI változóba az Atlas linked kell!
+    # MongoDB kapcsolat - HASZNÁLD AZ ATLAS LINKET A RENDEREN!
     mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
     client = MongoClient(mongo_url)
     db = client['twitch_miner_web']
@@ -57,22 +56,8 @@ def start_miner():
             ),
         ),
         streamer_settings=StreamerSettings(
-            make_predictions=True,
-            follow_raid=True,
-            claim_drops=True,
-            watch_streak=True,
-            chat=ChatPresence.ONLINE,
-            bet=BetSettings(
-                strategy=Strategy.SMART,
-                percentage=5,
-                percentage_gap=20,
-                max_points=50000,
-                stealth_mode=True,
-                delay_mode=DelayMode.FROM_END,
-                delay=6,
-                minimum_points=20000,
-                filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800)
-            )
+            make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True,
+            bet=BetSettings(strategy=Strategy.SMART, percentage=5, max_points=50000, stealth_mode=True)
         )
     )
 
@@ -93,52 +78,31 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, percentage_gap=20, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # Kezdeti szinkronizálás: biztosítjuk, hogy minden csatorna benne legyen az adatbázisban
-    for streamer in streamers_list:
-        name = streamer.username if hasattr(streamer, 'username') else streamer
-        if not twitch_data_collection.find_one({"channel_name": name}):
-            twitch_data_collection.insert_one({"channel_name": name, "history": [0]})
-
-    # --- OKOSABB ADATMENTŐ FÜGGVÉNY ---
+    # --- EZ A RÉSZ VISZI ÁT A PONTOKAT A WEBOLDALRA ---
     def update_db_loop():
-        print("Log: Adatmentő szál várakozik 60 másodpercet a bejelentkezésig...")
-        time.sleep(60) 
+        time.sleep(45) # Várunk az indulásig
         while True:
             try:
-                print("Log: Pontszámok mentése folyamatban...")
-                for streamer in streamers_list:
-                    name = streamer.username if hasattr(streamer, 'username') else streamer
-                    points = None
-                    
-                    # Megpróbáljuk kinyerni a pontokat a bot belső állapotából
-                    try:
-                        if hasattr(twitch_miner, 'get_points'):
-                            points = twitch_miner.get_points(name)
+                # Kikeressük a bot belső streamer listáját
+                if hasattr(twitch_miner, 'streamers'):
+                    for s_obj in twitch_miner.streamers:
+                        name = s_obj.username
+                        points = int(s_obj.balance) # Ez az a pontszám, amit a Discordon látsz!
                         
-                        # Ha az első nem megy, megpróbáljuk a belső listát (sok forknál ez kell)
-                        if points is None and hasattr(twitch_miner, 'streamers'):
-                            s_obj = next((s for s in twitch_miner.streamers if s.username == name), None)
-                            if s_obj:
-                                points = s_obj.balance
-                    except Exception as e:
-                        print(f"Log: Hiba {name} pontjainak lekérésekor: {e}")
-
-                    # Csak akkor mentünk, ha kaptunk számot és az nem nulla (vagy változott)
-                    if points is not None:
+                        # Beírjuk az adatbázisba
                         twitch_data_collection.update_one(
                             {"channel_name": name},
-                            {"$push": {"history": {"$each": [int(points)], "$slice": -50}}}
+                            {"$push": {"history": {"$each": [points], "$slice": -50}}},
+                            upsert=True
                         )
-                print("Log: Adatok sikeresen frissítve az adatbázisban.")
+                print("Log: Pontok sikeresen elmentve az adatbázisba.")
             except Exception as e:
-                print(f"Log: Váratlan hiba az adatmentő körben: {e}")
-            time.sleep(300) # 5 percenként ismételjük
+                print(f"Log: Hiba az adatmentésnél: {e}")
+            time.sleep(120) # 2 percenként frissítünk
 
-    # Adatmentő indítása a háttérben
     db_thread = threading.Thread(target=update_db_loop, daemon=True)
     db_thread.start()
 
-    # Indul a bányászat a fő szálon
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
 
 if __name__ == '__main__':
