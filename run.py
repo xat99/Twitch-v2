@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 import base64
-import json
+import shutil
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -32,21 +32,30 @@ def start_miner():
     twitch_data_collection = db['twitch_data']
     config_collection = db['config']
 
-    session_file = f"{username}.pkl"
+    # Két lehetséges hely a fájlnak
+    session_file_root = f"{username}.pkl"
+    session_file_cookies = os.path.join("cookies", f"{username}.pkl")
 
-    # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
+    # --- 0. LÉPÉS: A MÁGNES (Ha a fő mappába tetted a GitHubon, áthelyezi) ---
+    if os.path.exists(session_file_root):
+        os.makedirs("cookies", exist_ok=True)
+        shutil.move(session_file_root, session_file_cookies)
+        print(f"Log: Megtaláltam a {session_file_root} fájlt! Áthelyeztem a 'cookies' mappába a botnak.", flush=True)
+
+    # --- 1. MUNKAMENET VISSZATÖLTÉSE A FELHŐBŐL ---
     print(f"Log: Keresés a MongoDB-ben: {username} munkamenete...", flush=True)
     saved_session = config_collection.find_one({"type": "session_file", "user": username})
     
     if saved_session:
         try:
-            with open(session_file, "wb") as f:
+            os.makedirs("cookies", exist_ok=True)
+            with open(session_file_cookies, "wb") as f:
                 f.write(base64.b64decode(saved_session['data']))
-            print(f"Log: Belépési adatok ({session_file}) AZONNAL visszatöltve a MongoDB-ből.", flush=True)
+            print(f"Log: Belépési adatok AZONNAL visszatöltve a MongoDB-ből.", flush=True)
         except Exception as e:
             print(f"Log: Hiba a visszatöltéskor: {e}", flush=True)
 
-    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ (AZ ÖSSZES ÉRTESÍTŐVEL) ---
+    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
@@ -91,7 +100,6 @@ def start_miner():
             try:
                 is_logged_in = False
                 
-                # 1. Lekérjük a pontokat, és ellenőrizzük, sikeres volt-e a belépés
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
                         if not hasattr(s, 'channel_points') or s.channel_points is None:
@@ -107,25 +115,23 @@ def start_miner():
                             pts = 0
                             
                         if pts > 0:
-                            is_logged_in = True # LÁTJUK A PONTOKAT, BENT VAGYUNK!
+                            is_logged_in = True
                             twitch_data_collection.update_one(
                                 {"channel_name": s.username},
                                 {"$push": {"history": {"$each": [pts], "$slice": -50}}},
                                 upsert=True
                             )
                 
-                # 2. CSAK AKKOR MENTJÜK A FÁJLT, HA TUDJUK, HOGY JÓ (BENT VAGYUNK)
-                if is_logged_in and os.path.exists(session_file):
-                    if os.path.getsize(session_file) > 100:
-                        with open(session_file, "rb") as f:
+                # Mentjük a MongoDB-be is, ha a bot bent van és létezik a fájl
+                if is_logged_in and os.path.exists(session_file_cookies):
+                    if os.path.getsize(session_file_cookies) > 100:
+                        with open(session_file_cookies, "rb") as f:
                             config_collection.update_one(
                                 {"type": "session_file", "user": username},
                                 {"$set": {"data": base64.b64encode(f.read()).decode('utf-8'), "last_sync": time.time()}},
                                 upsert=True
                             )
-                        print("Log: Sikeres mentés a MongoDB-be (Pontok + Jó Munkamenet).", flush=True)
-                elif not is_logged_in:
-                    print("Log: Várakozás a sikeres bejelentkezésre, fájl mentése késleltetve...", flush=True)
+                        print(f"Log: Sikeres mentés a MongoDB-be.", flush=True)
 
             except Exception as e:
                 print(f"Log: Szinkronizációs hiba: {e}", flush=True)
