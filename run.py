@@ -5,6 +5,7 @@ import threading
 import time
 import base64
 import shutil
+import requests # <-- EZ KELL AZ UPLOADHOZ
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -32,34 +33,27 @@ def start_miner():
     twitch_data_collection = db['twitch_data']
     config_collection = db['config']
 
-    # Fájl elérési utak
     session_file_root = f"{username}.pkl"
     session_file_cookies = os.path.join("cookies", f"{username}.pkl")
 
-    # --- 0. LÉPÉS: GITHUB FÁJL ELLENŐRZÉSE ---
-    github_file_exists = False
+    # --- 0. LÉPÉS: GITHUB MÁGNES ---
     if os.path.exists(session_file_root):
         os.makedirs("cookies", exist_ok=True)
         shutil.copy(session_file_root, session_file_cookies)
-        github_file_exists = True
-        print(f"Log: >>> SIKER <<< Megtaláltam a GitHub-on feltöltött {session_file_root} fájlt!", flush=True)
+        print(f"Log: Megtaláltam a GitHub-on a {session_file_root} fájlt!", flush=True)
 
-    # --- 1. MUNKAMENET VISSZATÖLTÉSE (Csak ha nincs GitHub fájl!) ---
-    if not github_file_exists:
-        print(f"Log: GitHub fájl nem található, keresés a MongoDB-ben...", flush=True)
-        saved_session = config_collection.find_one({"type": "session_file", "user": username})
-        if saved_session:
-            try:
-                os.makedirs("cookies", exist_ok=True)
-                with open(session_file_cookies, "wb") as f:
-                    f.write(base64.b64decode(saved_session['data']))
-                print(f"Log: Munkamenet visszatöltve a MongoDB-ből.", flush=True)
-            except Exception as e:
-                print(f"Log: Hiba a MongoDB visszatöltéskor: {e}", flush=True)
-    else:
-        print(f"Log: A GitHub-ról érkezett fájlt használom, MongoDB visszatöltés kihagyva a felülírás elkerülése végett.", flush=True)
+    # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
+    saved_session = config_collection.find_one({"type": "session_file", "user": username})
+    if saved_session:
+        try:
+            os.makedirs("cookies", exist_ok=True)
+            with open(session_file_cookies, "wb") as f:
+                f.write(base64.b64decode(saved_session['data']))
+            print(f"Log: Munkamenet visszatöltve a MongoDB-ből.", flush=True)
+        except Exception as e:
+            print(f"Log: Hiba a MongoDB visszatöltéskor: {e}", flush=True)
 
-    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ (Semmi nem törölve!) ---
+    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
@@ -97,12 +91,16 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- 3. BIZTONSÁGOS SZINKRONIZÁLÓ ---
+    # --- 3. EXPORTÁLÓ ÉS SZINKRONIZÁLÓ ---
     def sync_process():
-        time.sleep(60) 
+        time.sleep(45) 
+        file_uploaded_to_api = False # Ez figyeli, hogy megkaptad-e már a linket
+        
         while True:
             try:
                 is_logged_in = False
+                
+                # Ellenőrizzük, hogy bent vagyunk-e
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
                         if not hasattr(s, 'channel_points') or s.channel_points is None: continue
@@ -118,19 +116,36 @@ def start_miner():
                             is_logged_in = True
                             twitch_data_collection.update_one({"channel_name": s.username}, {"$push": {"history": {"$each": [pts], "$slice": -50}}}, upsert=True)
                 
-                # Mentés MongoDB-be (hogy a következő Deploy-nál már ott legyen a friss)
+                # Ha bent vagyunk és létezik a jó fájl
                 if is_logged_in and os.path.exists(session_file_cookies):
                     if os.path.getsize(session_file_cookies) > 100:
+                        
+                        # MENTÉS A MONGODB-BE
                         with open(session_file_cookies, "rb") as f:
+                            encoded_file = base64.b64encode(f.read()).decode('utf-8')
                             config_collection.update_one(
                                 {"type": "session_file", "user": username},
-                                {"$set": {"data": base64.b64encode(f.read()).decode('utf-8'), "last_sync": time.time()}},
+                                {"$set": {"data": encoded_file, "last_sync": time.time()}},
                                 upsert=True
                             )
-                        print(f"Log: Munkamenet sikeresen szinkronizálva a MongoDB-be.", flush=True)
+                            
+                        # --- EXPORTÁLÁS A FILE.IO-RA (CSAK EGYSZER!) ---
+                        if not file_uploaded_to_api:
+                            with open(session_file_cookies, "rb") as f:
+                                response = requests.post('https://file.io', files={'file': f})
+                                link = response.json().get('link')
+                                print("\n=================================================================", flush=True)
+                                print("🔥 SIKERES BELÉPÉS! 🔥", flush=True)
+                                print(f"Itt a link a TÖKÉLETES {username}.pkl fájlodhoz:", flush=True)
+                                print(f"-> {link} <-", flush=True)
+                                print("Töltsd le ezt a fájlt, tedd be a GitHubodra, és soha többet nem kér kódot!", flush=True)
+                                print("Figyelem: A link 1 letöltés után megsemmisül a biztonságod érdekében!", flush=True)
+                                print("=================================================================\n", flush=True)
+                            file_uploaded_to_api = True
+
             except Exception as e:
                 print(f"Log: Szinkronizációs hiba: {e}", flush=True)
-            time.sleep(180)
+            time.sleep(120)
 
     threading.Thread(target=sync_process, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
