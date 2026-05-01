@@ -50,4 +50,6 @@ ADD ./templates ./templates
 ADD ./app.py ./app.py
 ADD ./run.py ./run.py
 
-CMD [ "python", "run.py" ]
+# FONTOS: Az app.py-t indítjuk el. 
+# Ez nyitja meg a portot a Rendernek, és ez indítja el a háttérben a run.py-t is!
+CMD [ "python", "app.py" ]
