@@ -3,6 +3,7 @@ import os
 import logging
 import threading
 import time
+import json
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -18,49 +19,42 @@ from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, Streame
 
 def start_miner():
     load_dotenv()
-
-    # MongoDB kapcsolat - HASZNÁLD AZ ATLAS LINKET A RENDEREN!
+    
+    username = os.getenv('TWITCH_USERNAME', 'szaby')
     mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
     client = MongoClient(mongo_url)
     db = client['twitch_miner_web']
     twitch_data_collection = db['twitch_data']
+    config_collection = db['config']
+
+    # TOKENEK ÉS SÜTI GENERÁLÁSA
+    saved_config = config_collection.find_one({"type": "twitch_tokens"})
+    if saved_config and saved_config.get('auth_token'):
+        cookie_data = [
+            {"name": "auth-token", "value": saved_config.get('auth_token'), "domain": ".twitch.tv", "path": "/"},
+            {"name": "unique_id", "value": saved_config.get('unique_id', ''), "domain": ".twitch.tv", "path": "/"}
+        ]
+        # Létrehozzuk a fájlt, amit a bot keres (pl. szaby.json)
+        with open(f"{username}.json", "w") as f:
+            json.dump(cookie_data, f)
+        print(f"Log: Belépési fájl generálva. Kód kérése átugorva.")
 
     twitch_miner = TwitchChannelPointsMiner(
-        username=os.getenv('TWITCH_USERNAME', ''),                  
-        password=os.getenv('TWITCH_PASSWORD', ''),                  
-        claim_drops_startup=False,                                  
+        username=username,                  
+        password=os.getenv('TWITCH_PASSWORD', ''),
         priority=[Priority.STREAK, Priority.DROPS, Priority.ORDER],
-        enable_analytics=False,                                     
         logger_settings=LoggerSettings(
-            save=True,                                              
-            console_level=logging.INFO,                             
-            auto_clear=True,
-            emoji=True,
-            colored=True,
-            color_palette=ColorPalette(
-                STREAMER_online="GREEN",
-                streamer_offline="red",
-                BET_wiN=Fore.MAGENTA
-            ),
-            telegram=Telegram(
-                chat_id=5856025580,
-                token="7386173970:AAGAmPAXATMROzvEG5E2XLFmhryQhQBHO0g",
-                events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE,
-                        Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM, Events.DROP_STATUS],
-                disable_notification=True,
-            ),
-            discord=Discord(
-                webhook_api="https://discord.com/api/webhooks/1229673281963950131/-4kkB66hh0hm8tqxzUDhqTbfljlPZ2lNP1dNGox0QuJoXJoPFyF-8cYLxFFIDN1AhSW3",
-                events=[Events.STREAMER_ONLINE, Events.STREAMER_OFFLINE,
-                        Events.BET_LOSE, Events.CHAT_MENTION, Events.DROP_CLAIM, Events.DROP_STATUS],
-            ),
+            save=True, console_level=logging.INFO, auto_clear=True,
+            telegram=Telegram(chat_id=5856025580, token="7386173970:AAGAmPAXATMROzvEG5E2XLFmhryQhQBHO0g", events=[Events.STREAMER_ONLINE, Events.BET_LOSE, Events.DROP_CLAIM]),
+            discord=Discord(webhook_api="https://discord.com/api/webhooks/1229673281963950131/-4kkB66hh0hm8tqxzUDhqTbfljlPZ2lNP1dNGox0QuJoXJoPFyF-8cYLxFFIDN1AhSW3", events=[Events.STREAMER_ONLINE, Events.BET_LOSE, Events.DROP_CLAIM]),
         ),
         streamer_settings=StreamerSettings(
             make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True,
-            bet=BetSettings(strategy=Strategy.SMART, percentage=5, max_points=50000, stealth_mode=True)
+            bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True)
         )
     )
 
+    # A te teljes listád
     streamers_list = [
         Streamer("ulrikch", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, percentage_gap=20, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800)))),
         Streamer("nexuspwn", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, percentage_gap=20, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800)))),
@@ -78,31 +72,24 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, percentage_gap=20, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- EZ A RÉSZ VISZI ÁT A PONTOKAT A WEBOLDALRA ---
+    # ADATMENTŐ (Pontok szinkronizálása a weboldalra)
     def update_db_loop():
-        time.sleep(45) # Várunk az indulásig
+        time.sleep(60)
         while True:
             try:
-                # Kikeressük a bot belső streamer listáját
                 if hasattr(twitch_miner, 'streamers'):
                     for s_obj in twitch_miner.streamers:
-                        name = s_obj.username
-                        points = int(s_obj.balance) # Ez az a pontszám, amit a Discordon látsz!
-                        
-                        # Beírjuk az adatbázisba
                         twitch_data_collection.update_one(
-                            {"channel_name": name},
-                            {"$push": {"history": {"$each": [points], "$slice": -50}}},
+                            {"channel_name": s_obj.username},
+                            {"$push": {"history": {"$each": [int(s_obj.balance)], "$slice": -50}}},
                             upsert=True
                         )
-                print("Log: Pontok sikeresen elmentve az adatbázisba.")
-            except Exception as e:
-                print(f"Log: Hiba az adatmentésnél: {e}")
-            time.sleep(120) # 2 percenként frissítünk
+                print("Log: Adatok elmentve.")
+            except:
+                pass
+            time.sleep(120)
 
-    db_thread = threading.Thread(target=update_db_loop, daemon=True)
-    db_thread.start()
-
+    threading.Thread(target=update_db_loop, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
 
 if __name__ == '__main__':
