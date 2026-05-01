@@ -4,7 +4,6 @@ import logging
 import threading
 import time
 import base64
-import json
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -34,7 +33,7 @@ def start_miner():
 
     session_file = f"{username}.pkl"
 
-    # --- 1. MUNKAMENET VISSZATÖLTÉSE (Indításkor) ---
+    # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
     saved_session = config_collection.find_one({"type": "session_file", "user": username})
     if saved_session:
         try:
@@ -82,14 +81,12 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- 3. GYORSÍTOTT SZINKRONIZÁLÓ ---
+    # --- 3. JAVÍTOTT SZINKRONIZÁLÓ (A 'channel_points' használatával) ---
     def sync_process():
-        # Csökkentett várakozás, hogy gyorsabban mentsen!
         time.sleep(45) 
         while True:
             try:
                 if os.path.exists(session_file):
-                    # CSAK AKKOR MENTÜNK, HA A FÁJL NEM ÜRES
                     if os.path.getsize(session_file) > 100:
                         with open(session_file, "rb") as f:
                             config_collection.update_one(
@@ -100,18 +97,33 @@ def start_miner():
                 
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
-                        raw = str(s.balance).lower()
-                        pts = int(float(raw.replace('k', '')) * 1000) if 'k' in raw else int(float(raw))
+                        # ITT VOLT A HIBA JAVÍTVA: balance -> channel_points
+                        if not hasattr(s, 'channel_points') or s.channel_points is None:
+                            continue
+                            
+                        raw = str(s.channel_points).lower()
+                        pts = 0
+                        
+                        try:
+                            if 'k' in raw:
+                                pts = int(float(raw.replace('k', '')) * 1000)
+                            elif 'm' in raw:
+                                pts = int(float(raw.replace('m', '')) * 1000000)
+                            else:
+                                pts = int(float(raw))
+                        except:
+                            pts = 0
+                            
                         if pts > 0:
                             twitch_data_collection.update_one(
                                 {"channel_name": s.username},
                                 {"$push": {"history": {"$each": [pts], "$slice": -50}}},
                                 upsert=True
                             )
-                print("Log: Sikeres mentés a MongoDB-be.")
+                print("Log: Sikeres mentés a MongoDB-be (Munkamenet + Pontok).")
             except Exception as e:
                 print(f"Log: Szinkronizációs hiba: {e}")
-            time.sleep(120) # 2 percenként ment
+            time.sleep(120)
 
     threading.Thread(target=sync_process, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
