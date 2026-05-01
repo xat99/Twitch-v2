@@ -32,30 +32,34 @@ def start_miner():
     twitch_data_collection = db['twitch_data']
     config_collection = db['config']
 
-    # Két lehetséges hely a fájlnak
+    # Fájl elérési utak
     session_file_root = f"{username}.pkl"
     session_file_cookies = os.path.join("cookies", f"{username}.pkl")
 
-    # --- 0. LÉPÉS: A MÁGNES (Ha a fő mappába tetted a GitHubon, áthelyezi) ---
+    # --- 0. LÉPÉS: GITHUB FÁJL ELLENŐRZÉSE ---
+    github_file_exists = False
     if os.path.exists(session_file_root):
         os.makedirs("cookies", exist_ok=True)
-        shutil.move(session_file_root, session_file_cookies)
-        print(f"Log: Megtaláltam a {session_file_root} fájlt! Áthelyeztem a 'cookies' mappába a botnak.", flush=True)
+        shutil.copy(session_file_root, session_file_cookies)
+        github_file_exists = True
+        print(f"Log: >>> SIKER <<< Megtaláltam a GitHub-on feltöltött {session_file_root} fájlt!", flush=True)
 
-    # --- 1. MUNKAMENET VISSZATÖLTÉSE A FELHŐBŐL ---
-    print(f"Log: Keresés a MongoDB-ben: {username} munkamenete...", flush=True)
-    saved_session = config_collection.find_one({"type": "session_file", "user": username})
-    
-    if saved_session:
-        try:
-            os.makedirs("cookies", exist_ok=True)
-            with open(session_file_cookies, "wb") as f:
-                f.write(base64.b64decode(saved_session['data']))
-            print(f"Log: Belépési adatok AZONNAL visszatöltve a MongoDB-ből.", flush=True)
-        except Exception as e:
-            print(f"Log: Hiba a visszatöltéskor: {e}", flush=True)
+    # --- 1. MUNKAMENET VISSZATÖLTÉSE (Csak ha nincs GitHub fájl!) ---
+    if not github_file_exists:
+        print(f"Log: GitHub fájl nem található, keresés a MongoDB-ben...", flush=True)
+        saved_session = config_collection.find_one({"type": "session_file", "user": username})
+        if saved_session:
+            try:
+                os.makedirs("cookies", exist_ok=True)
+                with open(session_file_cookies, "wb") as f:
+                    f.write(base64.b64decode(saved_session['data']))
+                print(f"Log: Munkamenet visszatöltve a MongoDB-ből.", flush=True)
+            except Exception as e:
+                print(f"Log: Hiba a MongoDB visszatöltéskor: {e}", flush=True)
+    else:
+        print(f"Log: A GitHub-ról érkezett fájlt használom, MongoDB visszatöltés kihagyva a felülírás elkerülése végett.", flush=True)
 
-    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ ---
+    # --- 2. BÁNYÁSZ KONFIGURÁCIÓ (Semmi nem törölve!) ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
@@ -95,34 +99,26 @@ def start_miner():
 
     # --- 3. BIZTONSÁGOS SZINKRONIZÁLÓ ---
     def sync_process():
-        time.sleep(45) 
+        time.sleep(60) 
         while True:
             try:
                 is_logged_in = False
-                
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
-                        if not hasattr(s, 'channel_points') or s.channel_points is None:
-                            continue
-                            
+                        if not hasattr(s, 'channel_points') or s.channel_points is None: continue
                         raw = str(s.channel_points).lower()
                         pts = 0
                         try:
                             if 'k' in raw: pts = int(float(raw.replace('k', '')) * 1000)
                             elif 'm' in raw: pts = int(float(raw.replace('m', '')) * 1000000)
                             else: pts = int(float(raw))
-                        except:
-                            pts = 0
+                        except: pts = 0
                             
                         if pts > 0:
                             is_logged_in = True
-                            twitch_data_collection.update_one(
-                                {"channel_name": s.username},
-                                {"$push": {"history": {"$each": [pts], "$slice": -50}}},
-                                upsert=True
-                            )
+                            twitch_data_collection.update_one({"channel_name": s.username}, {"$push": {"history": {"$each": [pts], "$slice": -50}}}, upsert=True)
                 
-                # Mentjük a MongoDB-be is, ha a bot bent van és létezik a fájl
+                # Mentés MongoDB-be (hogy a következő Deploy-nál már ott legyen a friss)
                 if is_logged_in and os.path.exists(session_file_cookies):
                     if os.path.getsize(session_file_cookies) > 100:
                         with open(session_file_cookies, "rb") as f:
@@ -131,11 +127,10 @@ def start_miner():
                                 {"$set": {"data": base64.b64encode(f.read()).decode('utf-8'), "last_sync": time.time()}},
                                 upsert=True
                             )
-                        print(f"Log: Sikeres mentés a MongoDB-be.", flush=True)
-
+                        print(f"Log: Munkamenet sikeresen szinkronizálva a MongoDB-be.", flush=True)
             except Exception as e:
                 print(f"Log: Szinkronizációs hiba: {e}", flush=True)
-            time.sleep(120)
+            time.sleep(180)
 
     threading.Thread(target=sync_process, daemon=True).start()
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
