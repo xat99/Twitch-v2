@@ -5,7 +5,7 @@ import threading
 import time
 import base64
 import shutil
-import requests # <-- EZ KELL AZ UPLOADHOZ
+import requests # <-- NAGYON FONTOS: requirements.txt-be írd be!
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -33,14 +33,7 @@ def start_miner():
     twitch_data_collection = db['twitch_data']
     config_collection = db['config']
 
-    session_file_root = f"{username}.pkl"
     session_file_cookies = os.path.join("cookies", f"{username}.pkl")
-
-    # --- 0. LÉPÉS: GITHUB MÁGNES ---
-    if os.path.exists(session_file_root):
-        os.makedirs("cookies", exist_ok=True)
-        shutil.copy(session_file_root, session_file_cookies)
-        print(f"Log: Megtaláltam a GitHub-on a {session_file_root} fájlt!", flush=True)
 
     # --- 1. MUNKAMENET VISSZATÖLTÉSE ---
     saved_session = config_collection.find_one({"type": "session_file", "user": username})
@@ -91,36 +84,28 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- 3. EXPORTÁLÓ ÉS SZINKRONIZÁLÓ ---
+    # --- 3. EXPORTÁLÓ ÉS SZINKRONIZÁLÓ SZÁL ---
     def sync_process():
-        time.sleep(45) 
-        file_uploaded_to_api = False # Ez figyeli, hogy megkaptad-e már a linket
+        print("Log: Szinkronizáló szál elindult, várakozás 60mp...", flush=True)
+        time.sleep(60) 
+        file_uploaded_to_api = False 
         
         while True:
             try:
                 is_logged_in = False
-                
-                # Ellenőrizzük, hogy bent vagyunk-e
                 if hasattr(twitch_miner, 'streamers'):
                     for s in twitch_miner.streamers:
-                        if not hasattr(s, 'channel_points') or s.channel_points is None: continue
-                        raw = str(s.channel_points).lower()
-                        pts = 0
-                        try:
-                            if 'k' in raw: pts = int(float(raw.replace('k', '')) * 1000)
-                            elif 'm' in raw: pts = int(float(raw.replace('m', '')) * 1000000)
-                            else: pts = int(float(raw))
-                        except: pts = 0
-                            
-                        if pts > 0:
+                        if hasattr(s, 'channel_points') and s.channel_points is not None:
                             is_logged_in = True
+                            # Pontszámok mentése MongoDB-be
+                            raw = str(s.channel_points).lower()
+                            pts = int(float(raw.replace('k', '')) * 1000) if 'k' in raw else int(float(raw))
                             twitch_data_collection.update_one({"channel_name": s.username}, {"$push": {"history": {"$each": [pts], "$slice": -50}}}, upsert=True)
                 
-                # Ha bent vagyunk és létezik a jó fájl
-                if is_logged_in and os.path.exists(session_file_cookies):
-                    if os.path.getsize(session_file_cookies) > 100:
-                        
-                        # MENTÉS A MONGODB-BE
+                if is_logged_in:
+                    print("Log: Sikeres bejelentkezést érzékelek!", flush=True)
+                    if os.path.exists(session_file_cookies):
+                        # Mentés MongoDB-be
                         with open(session_file_cookies, "rb") as f:
                             encoded_file = base64.b64encode(f.read()).decode('utf-8')
                             config_collection.update_one(
@@ -128,23 +113,27 @@ def start_miner():
                                 {"$set": {"data": encoded_file, "last_sync": time.time()}},
                                 upsert=True
                             )
-                            
-                        # --- EXPORTÁLÁS A FILE.IO-RA (CSAK EGYSZER!) ---
+                        
+                        # EXPORTÁLÁS (Link generálás)
                         if not file_uploaded_to_api:
+                            print("Log: Fájl feltöltése a file.io-ra...", flush=True)
                             with open(session_file_cookies, "rb") as f:
                                 response = requests.post('https://file.io', files={'file': f})
-                                link = response.json().get('link')
-                                print("\n=================================================================", flush=True)
-                                print("🔥 SIKERES BELÉPÉS! 🔥", flush=True)
-                                print(f"Itt a link a TÖKÉLETES {username}.pkl fájlodhoz:", flush=True)
-                                print(f"-> {link} <-", flush=True)
-                                print("Töltsd le ezt a fájlt, tedd be a GitHubodra, és soha többet nem kér kódot!", flush=True)
-                                print("Figyelem: A link 1 letöltés után megsemmisül a biztonságod érdekében!", flush=True)
-                                print("=================================================================\n", flush=True)
-                            file_uploaded_to_api = True
+                                if response.status_code == 200:
+                                    link = response.json().get('link')
+                                    print("\n" + "="*50, flush=True)
+                                    print(f"SZERESD EZT A LINKET: {link}", flush=True)
+                                    print("="*50 + "\n", flush=True)
+                                    file_uploaded_to_api = True
+                                else:
+                                    print(f"Log: File.io hiba: {response.status_code}", flush=True)
+                    else:
+                        print(f"Log: HIBA! A fájl nem található itt: {session_file_cookies}", flush=True)
+                else:
+                    print("Log: Még nem látok pontokat, várakozás a belépésre...", flush=True)
 
             except Exception as e:
-                print(f"Log: Szinkronizációs hiba: {e}", flush=True)
+                print(f"Log: Szinkronizációs hiba történt: {e}", flush=True)
             time.sleep(120)
 
     threading.Thread(target=sync_process, daemon=True).start()
