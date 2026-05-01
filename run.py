@@ -3,7 +3,7 @@ import os
 import logging
 import threading
 import time
-import json
+import base64
 from colorama import Fore
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -24,7 +24,7 @@ from TwitchChannelPointsMiner.classes.entities.Streamer import Streamer, Streame
 def start_miner():
     load_dotenv()
     
-    # Alapadatok lekérése
+    # Felhasználónév és adatbázis kapcsolat
     username = os.getenv('TWITCH_USERNAME', 'szaby')
     mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
     client = MongoClient(mongo_url)
@@ -32,18 +32,21 @@ def start_miner():
     twitch_data_collection = db['twitch_data']
     config_collection = db['config']
 
-    # --- 2FA ÁTUGRÁS: SÜTI GENERÁLÁSA AZ ADATBÁZISBÓL ---
-    saved_config = config_collection.find_one({"type": "twitch_tokens"})
-    if saved_config and saved_config.get('auth_token'):
-        cookie_data = [
-            {"name": "auth-token", "value": saved_config.get('auth_token'), "domain": ".twitch.tv", "path": "/"},
-            {"name": "unique_id", "value": saved_config.get('unique_id', ''), "domain": ".twitch.tv", "path": "/"}
-        ]
-        with open(f"{username}.json", "w") as f:
-            json.dump(cookie_data, f)
-        print(f"Log: Bejelentkezési fájl ({username}.json) létrehozva a weboldal adatai alapján.")
+    # A bot által mentett belépési fájl neve
+    session_file = f"{username}.pkl"
 
-    # --- A BÁNYÁSZ FŐ BEÁLLÍTÁSAI (AZ ÖSSZES ÉRTESÍTŐVEL) ---
+    # --- 1. MUNKAMENET VISSZATÖLTÉSE MONGODB-BŐL ---
+    # Megnézzük, van-e elmentett belépésünk a felhőben
+    saved_session = config_collection.find_one({"type": "session_file", "user": username})
+    if saved_session:
+        try:
+            with open(session_file, "wb") as f:
+                f.write(base64.b64decode(saved_session['data']))
+            print(f"Log: Belépési adatok visszatöltve a MongoDB-ből. Kód kérése elvileg elmarad.")
+        except Exception as e:
+            print(f"Log: Hiba a visszatöltéskor: {e}")
+
+    # --- 2. A BÁNYÁSZ FŐ BEÁLLÍTÁSAI (ÖSSZES ÉRTESÍTŐVEL) ---
     twitch_miner = TwitchChannelPointsMiner(
         username=username,                  
         password=os.getenv('TWITCH_PASSWORD', ''),                  
@@ -130,11 +133,21 @@ def start_miner():
         Streamer("fene__channel", settings=StreamerSettings(make_predictions=True, follow_raid=True, claim_drops=True, watch_streak=True, bet=BetSettings(strategy=Strategy.SMART, percentage=5, stealth_mode=True, percentage_gap=20, max_points=234, filter_condition=FilterCondition(by=OutcomeKeys.TOTAL_USERS, where=Condition.LTE, value=800))))
     ]
 
-    # --- ADATBÁZIS SZINKRONIZÁLÓ (A WEBOLDALNAK) ---
-    def update_db_loop():
-        time.sleep(60) # Várunk a bejelentkezésre
+    # --- 3. AUTOMATIKUS MENTÉS MONGODB-BE ---
+    def sync_to_mongodb():
         while True:
             try:
+                # Belépési fájl szinkronizálása
+                if os.path.exists(session_file):
+                    with open(session_file, "rb") as f:
+                        encoded_data = base64.b64encode(f.read()).decode('utf-8')
+                        config_collection.update_one(
+                            {"type": "session_file", "user": username},
+                            {"$set": {"data": encoded_data, "updated_at": time.time()}},
+                            upsert=True
+                        )
+                
+                # Pontok szinkronizálása a Dashboardnak
                 if hasattr(twitch_miner, 'streamers'):
                     for s_obj in twitch_miner.streamers:
                         twitch_data_collection.update_one(
@@ -142,12 +155,11 @@ def start_miner():
                             {"$push": {"history": {"$each": [int(s_obj.balance)], "$slice": -50}}},
                             upsert=True
                         )
-                print("Log: Dashboard adatok frissítve.")
             except Exception as e:
-                print(f"Log: Mentési hiba: {e}")
-            time.sleep(120)
+                print(f"Log: Szinkronizációs hiba: {e}")
+            time.sleep(180) # 3 percenként ment
 
-    threading.Thread(target=update_db_loop, daemon=True).start()
+    threading.Thread(target=sync_to_mongodb, daemon=True).start()
 
     # Indítás
     twitch_miner.mine(streamers_list, followers=False, followers_order=FollowersOrder.ASC)
