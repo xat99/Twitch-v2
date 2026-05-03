@@ -37,9 +37,8 @@
                 <div class="p-5">
                     <div class="flex justify-between items-center">
                         <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-emerald-400 to-cyan-600 flex items-center justify-center text-sm font-black text-slate-900 shadow-lg uppercase">
-                                {{ acc.channel_name[:2] }}
-                            </div>
+                            <img id="avatar-{{ acc.channel_name }}" src="https://ui-avatars.com/api/?name={{ acc.channel_name }}&background=10b981&color=fff&bold=true" class="w-10 h-10 rounded-2xl shadow-lg object-cover border border-slate-700 transition-all duration-500" alt="{{ acc.channel_name }}">
+                            
                             <h3 class="font-bold text-white tracking-tight">{{ acc.channel_name }}</h3>
                         </div>
                         <div id="status-{{ acc.channel_name }}">
@@ -85,7 +84,6 @@
             </div>
 
             <script>
-                // A grafikonokat eltároljuk egy közös memóriába, hogy később tudjuk frissíteni őket
                 if (typeof window.charts === 'undefined') window.charts = {};
 
                 document.addEventListener('DOMContentLoaded', function () {
@@ -117,7 +115,6 @@
                     var chart = new ApexCharts(document.querySelector("#chart-{{ acc.channel_name }}"), options);
                     chart.render();
                     
-                    // Elmentjük a nevén
                     window.charts["{{ acc.channel_name }}"] = chart;
                 });
             </script>
@@ -141,28 +138,54 @@
     </div>
 
     <script>
+        // --- 1. PROFILKÉPEK BETÖLTÉSE ---
+        async function loadTwitchAvatars() {
+            // Létrehozzuk a csatornák listáját a Python adatokból
+            const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}];
+            
+            // Egyenként lekérjük a képeket, hogy ne terheljük túl a rendszert
+            for (let channel of channels) {
+                try {
+                    let response = await fetch(`https://decapi.me/twitch/avatar/${channel}`);
+                    let avatarUrl = await response.text();
+                    
+                    // Ha a szerver visszaadta a hivatalos képlinket
+                    if (avatarUrl && avatarUrl.startsWith('http')) {
+                        let imgElement = document.getElementById(`avatar-${channel}`);
+                        if (imgElement) {
+                            imgElement.src = avatarUrl; // Kép lecserélése
+                        }
+                    }
+                } catch (error) {
+                    console.log(`Nem sikerült betölteni a profilképet: ${channel}`);
+                }
+            }
+        }
+
+        // Amint betölt az oldal, azonnal indítjuk a profilképek keresését
+        window.addEventListener('DOMContentLoaded', () => {
+            loadTwitchAvatars();
+        });
+
+        // --- 2. VALÓS IDEJŰ PONT FRISSÍTÉS (60 Másodpercenként) ---
         async function fetchUpdates() {
             try {
                 let response = await fetch('/api/data');
                 let accounts = await response.json();
 
                 accounts.forEach(acc => {
-                    // 1. Pontok frissítése a képernyőn
                     let ptsSpan = document.getElementById('pts-' + acc.channel_name);
                     if (ptsSpan && ptsSpan.innerText !== acc.formatted_points) {
                         ptsSpan.innerText = acc.formatted_points;
-                        // Kis "villanó" animáció frissítéskor
                         ptsSpan.classList.add('text-emerald-400');
                         setTimeout(() => ptsSpan.classList.remove('text-emerald-400'), 1000);
                     }
 
-                    // 2. Grafikon frissítése
                     if (window.charts && window.charts[acc.channel_name]) {
                         let chartData = acc.chart_data.length > 1 ? acc.chart_data : [acc.chart_data[0], acc.chart_data[0]];
                         window.charts[acc.channel_name].updateSeries([{ data: chartData }]);
                     }
 
-                    // 3. Változás (diff) frissítése
                     let diffContainer = document.getElementById('diff-' + acc.channel_name);
                     if (diffContainer) {
                         if (acc.diff !== 0) {
@@ -180,9 +203,9 @@
             }
         }
 
-        // 60 másodpercenként (60000 ms) teljesen magától lekéri és rajzolja az új adatokat!
         setInterval(fetchUpdates, 60000);
 
+        // --- 3. CHAT ABLAK KEZELÉSE ---
         function openChat(channelName) {
             document.getElementById('chatTitle').innerText = channelName + " • ÉLŐ CHAT";
             const chatContainer = document.getElementById('chatContainer');
