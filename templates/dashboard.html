@@ -7,7 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     
-    <script src="https://cdn.jsdelivr.net/npm/tmi.js@1.8.5/dist/tmi.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tmi.js/1.8.3/tmi.min.js"></script>
     
     <style>
         ::-webkit-scrollbar { width: 6px; }
@@ -134,7 +134,6 @@
     </div>
 
     <script>
-        // --- 1. PROFILKÉPEK BETÖLTÉSE ---
         async function loadTwitchAvatars() {
             const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}];
             for (let channel of channels) {
@@ -150,7 +149,6 @@
         }
         window.addEventListener('DOMContentLoaded', loadTwitchAvatars);
 
-        // --- 2. VALÓS IDEJŰ FRISSÍTÉS (60mp) ---
         async function fetchUpdates() {
             try {
                 let response = await fetch('/api/data');
@@ -185,14 +183,11 @@
         }
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. AUTOMATA CHAT RENDSZER (A HIÁNYZÓ RENDER NAPLÓZÁSSAL) ---
         let chatClient;
         let activeChannel = "";
-        
         const twitchUser = "{{ twitch_name }}";
         const twitchToken = "{{ twitch_token }}";
 
-        // EZ HIÁNYZOTT: Segédfüggvény a Render logok felé!
         function sendErrorToRender(errorMessage, channelName) {
             fetch('/api/log_error', {
                 method: 'POST',
@@ -212,51 +207,65 @@
             status.className = "text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1";
             document.getElementById('chatModal').classList.remove('hidden');
 
-            if (chatClient) { try { await chatClient.disconnect(); } catch(e) {} }
+            // --- FATÁLIS HIBA VÉDŐHÁLÓ ---
+            try {
+                if (typeof tmi === 'undefined') {
+                    throw new Error("Nem sikerült letölteni a tmi.js motort a szerverről!");
+                }
 
-            let finalToken = twitchToken;
-            if (finalToken && !finalToken.startsWith('oauth:')) {
-                finalToken = 'oauth:' + finalToken;
-            }
+                if (chatClient) { try { await chatClient.disconnect(); } catch(e) {} }
 
-            chatClient = new tmi.Client({
-                connection: { reconnect: false, secure: true },
-                identity: { username: twitchUser, password: finalToken },
-                channels: [ channel ]
-            });
+                let finalToken = twitchToken;
+                if (finalToken && !finalToken.startsWith('oauth:')) {
+                    finalToken = 'oauth:' + finalToken;
+                }
 
-            // Hibakezelés kibővítve a Render felé
-            chatClient.on('disconnected', (reason) => {
-                status.innerText = "Sikertelen Bejelentkezés!";
+                chatClient = new tmi.Client({
+                    connection: { reconnect: false, secure: true },
+                    identity: { username: twitchUser, password: finalToken },
+                    channels: [ channel ]
+                });
+
+                chatClient.on('disconnected', (reason) => {
+                    status.innerText = "Sikertelen Bejelentkezés!";
+                    status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
+                    chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">
+                        <strong>Hiba a csatlakozáskor!</strong><br>
+                        A Twitch szervere elutasította a jelszót.<br><br>
+                        Biztos, hogy a Token a <b>${twitchUser}</b> fiókhoz lett generálva?
+                    </div>`;
+                    sendErrorToRender("Disconnected from Twitch Chat. Reason: " + reason, channel);
+                });
+
+                chatClient.connect().catch(err => {
+                    sendErrorToRender("Connection Catch Error: " + err, channel);
+                });
+
+                chatClient.on('connected', () => {
+                    status.innerText = "Sikeresen Bejelentkezve";
+                    status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
+                    chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-gray-800 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
+                });
+
+                chatClient.on('message', (channel, tags, message, self) => {
+                    const div = document.createElement('div');
+                    div.className = "chat-msg leading-relaxed text-[13px] px-2";
+                    const color = tags.color || '#10b981'; 
+                    div.innerHTML = `<span style="color: ${color}" class="font-bold">${tags['display-name']}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
+                    chatBox.appendChild(div);
+                    chatBox.scrollTop = chatBox.scrollHeight;
+                });
+            } catch (fatalError) {
+                // Ebbe fut bele, ha 404-es hibát kap a letöltésnél
+                status.innerText = "Kritikus Hiba!";
                 status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
                 chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">
-                    <strong>Hiba a csatlakozáskor!</strong><br>
-                    A Twitch szervere elutasította a jelszót. <br><br>
-                    Biztos, hogy a Token a <b>${twitchUser}</b> fiókhoz lett generálva?<br><br>
-                    <i>További részletek a Render.com konzolban!</i>
+                    <strong>Rendszerhiba!</strong><br>
+                    A böngésződ blokkolja vagy nem találja a Chat Motort.<br><br>
+                    Részletek: ${fatalError}
                 </div>`;
-                sendErrorToRender("Disconnected from Twitch Chat. Reason: " + reason, channel);
-            });
-
-            chatClient.connect().catch(err => {
-                console.log("Connect hiba:", err);
-                sendErrorToRender("Connection Catch Error: " + err, channel);
-            });
-
-            chatClient.on('connected', () => {
-                status.innerText = "Sikeresen Bejelentkezve";
-                status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
-                chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-gray-800 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
-            });
-
-            chatClient.on('message', (channel, tags, message, self) => {
-                const div = document.createElement('div');
-                div.className = "chat-msg leading-relaxed text-[13px] px-2";
-                const color = tags.color || '#10b981'; 
-                div.innerHTML = `<span style="color: ${color}" class="font-bold">${tags['display-name']}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
-                chatBox.appendChild(div);
-                chatBox.scrollTop = chatBox.scrollHeight;
-            });
+                sendErrorToRender("FATAL JS ERROR: " + fatalError, channel);
+            }
         }
 
         function sendMessage() {
