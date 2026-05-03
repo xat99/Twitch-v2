@@ -6,7 +6,6 @@
     <title>Miner Dashboard - PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
-    
     <style>
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
@@ -119,11 +118,11 @@
                 </button>
             </div>
             
-            <div id="chatBox" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm bg-black"></div>
+            <div id="chatBox" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm bg-black scroll-smooth"></div>
 
             <div class="p-4 bg-slate-900 border-t border-slate-800">
                 <div class="flex gap-2">
-                    <input type="text" id="messageInput" placeholder="Írj valamit... (Automatikus Belépés)" 
+                    <input type="text" id="messageInput" placeholder="Írj valamit..." 
                         class="flex-grow bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl px-5 py-3 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm">
                     <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-2xl font-black transition-all shadow-md active:scale-95">Küldés</button>
                 </div>
@@ -132,7 +131,7 @@
     </div>
 
     <script>
-        // 1. PROFILKÉPEK BETÖLTÉSE
+        // 1. Profilképek betöltése
         async function loadTwitchAvatars() {
             const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}];
             for (let channel of channels) {
@@ -148,12 +147,11 @@
         }
         window.addEventListener('DOMContentLoaded', loadTwitchAvatars);
 
-        // 2. VALÓS IDEJŰ FRISSÍTÉS (60mp)
+        // 2. Valós idejű frissítés
         async function fetchUpdates() {
             try {
                 let response = await fetch('/api/data');
                 let accounts = await response.json();
-
                 accounts.forEach(acc => {
                     let ptsSpan = document.getElementById('pts-' + acc.channel_name);
                     if (ptsSpan && ptsSpan.innerText !== acc.formatted_points) {
@@ -161,12 +159,10 @@
                         ptsSpan.classList.add('text-emerald-400');
                         setTimeout(() => ptsSpan.classList.remove('text-emerald-400'), 1000);
                     }
-
                     if (window.charts && window.charts[acc.channel_name]) {
                         let chartData = acc.chart_data.length > 1 ? acc.chart_data : [acc.chart_data[0], acc.chart_data[0]];
                         window.charts[acc.channel_name].updateSeries([{ data: chartData }]);
                     }
-
                     let diffContainer = document.getElementById('diff-' + acc.channel_name);
                     if (diffContainer) {
                         if (acc.diff !== 0) {
@@ -183,11 +179,10 @@
         }
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. SAJÁT, NATÍV BEÉPÍTETT CHAT MOTOR (NINCS TÖBBÉ LETILTÁS!) ---
+        // --- 3. SAJÁT, NATÍV BEÉPÍTETT CHAT MOTOR ---
         let chatWs = null;
         let activeChannel = "";
         
-        // Csupa kisbetűre van szükség a Twitchnél
         const twitchUser = "{{ twitch_name }}".toLowerCase();
         const twitchToken = "{{ twitch_token }}";
 
@@ -209,66 +204,77 @@
                 finalToken = 'oauth:' + finalToken;
             }
 
-            // Kapcsolódás KÖZVETLENÜL a Twitch belső szerverére
             chatWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
 
             chatWs.onopen = () => {
-                chatWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands');
-                chatWs.send(`PASS ${finalToken}`);
-                chatWs.send(`NICK ${twitchUser}`);
-                chatWs.send(`JOIN #${activeChannel}`);
+                // JAVÍTVA: Hozzáadva a \r\n minden küldés végére!
+                chatWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n');
+                chatWs.send(`PASS ${finalToken}\r\n`);
+                chatWs.send(`NICK ${twitchUser}\r\n`);
+                chatWs.send(`JOIN #${activeChannel}\r\n`);
             };
 
             chatWs.onmessage = (event) => {
                 const lines = event.data.split('\r\n');
                 for(let line of lines) {
-                    if(!line) continue;
+                    if(!line.trim()) continue;
                     
-                    // Szerver ping (hogy ne dobjon ki minket)
+                    // Szerver ping - JAVÍTVA a \r\n a válasznál
                     if (line.startsWith('PING')) {
-                        chatWs.send('PONG :tmi.twitch.tv');
+                        chatWs.send('PONG :tmi.twitch.tv\r\n');
                         continue;
                     }
 
-                    // Sikeres bejelentkezés!
+                    // Sikeres bejelentkezés
                     if (line.includes(' 001 ')) {
                         status.innerText = "Sikeresen Bejelentkezve";
                         status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
-                        chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-slate-800 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
+                        chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-slate-800/50 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
                     }
 
-                    // Rossz jelszó hiba
+                    // Hibás jelszó
                     if (line.includes('Login authentication failed')) {
                         status.innerText = "Sikertelen Bejelentkezés!";
                         status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
-                        chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">
-                            <strong>Hiba a csatlakozáskor!</strong><br>
-                            A Twitch elutasította a jelszót.<br>Győződj meg róla, hogy az Access Token ehhez a fiókhoz lett generálva: <b>${twitchUser}</b>
-                        </div>`;
+                        chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">Hiba a csatlakozáskor! A Twitch elutasította a jelszót.</div>`;
                         chatWs.close();
                         return;
                     }
 
-                    // Normál chat üzenetek kiolvasása
                     if (line.includes(' PRIVMSG ')) {
-                        let color = '#10b981'; // Alap zöld
+                        let color = '#10b981'; 
                         let displayName = 'Valaki';
                         let message = '';
 
-                        if (line.startsWith('@')) {
-                            const parts = line.split(' :');
-                            const tags = parts[0].substring(1).split(';');
-                            tags.forEach(t => {
-                                const [k, v] = t.split('=');
-                                if(k === 'color' && v) color = v;
-                                if(k === 'display-name' && v) displayName = v;
-                            });
+                        try {
+                            let remaining = line;
+                            if (remaining.startsWith('@')) {
+                                let spaceIdx = remaining.indexOf(' ');
+                                let tagsRaw = remaining.slice(1, spaceIdx).split(';');
+                                tagsRaw.forEach(tag => {
+                                    let parts = tag.split('=');
+                                    if (parts[0] === 'color' && parts[1]) color = parts[1];
+                                    if (parts[0] === 'display-name' && parts[1]) displayName = parts[1];
+                                });
+                                remaining = remaining.slice(spaceIdx + 1);
+                            }
                             
-                            const msgMatch = line.match(/PRIVMSG #\w+ :(.*)/);
-                            if(msgMatch) message = msgMatch[1];
-                        }
+                            let msgParts = remaining.split(' PRIVMSG ');
+                            if (msgParts.length > 1) {
+                                if (displayName === 'Valaki') {
+                                    let namePart = msgParts[0].split('!')[0];
+                                    displayName = namePart.startsWith(':') ? namePart.substring(1) : namePart;
+                                }
+                                
+                                let chanAndMsg = msgParts[1];
+                                let colonIdx = chanAndMsg.indexOf(' :');
+                                if (colonIdx !== -1) {
+                                    message = chanAndMsg.substring(colonIdx + 2);
+                                }
+                            }
+                        } catch (e) { console.log("Fordítási hiba:", e); }
 
-                        if(message) {
+                        if (message) {
                             const div = document.createElement('div');
                             div.className = "chat-msg leading-relaxed text-[13px] px-2";
                             div.innerHTML = `<span style="color: ${color}" class="font-bold">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
@@ -279,23 +285,31 @@
                 }
             };
 
-            chatWs.onerror = () => {
-                status.innerText = "Hálózati Hiba!";
-                status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
+            chatWs.onclose = () => {
+                if (status.innerText !== "Sikertelen Bejelentkezés!") {
+                    status.innerText = "Lecsatlakozva";
+                    status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
+                    chatBox.innerHTML += `<div class="text-red-500 text-xs text-center py-2 italic border-t border-slate-800/50 mt-2">A kapcsolat megszakadt a szerverrel.</div>`;
+                }
             };
         }
 
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const msg = input.value.trim();
-            if (msg && chatWs && chatWs.readyState === WebSocket.OPEN) {
-                // Üzenet beküldése a Twitchnek
-                chatWs.send(`PRIVMSG #${activeChannel} :${msg}`);
+            
+            if (!chatWs || chatWs.readyState !== 1) {
+                alert("Nincs aktív kapcsolat a szerverrel! Kérlek zárd be a chatet, és nyisd meg újra.");
+                return;
+            }
+
+            if (msg) {
+                // JAVÍTVA: A kiküldött üzenet végére is kötelező a \r\n
+                chatWs.send(`PRIVMSG #${activeChannel} :${msg}\r\n`);
                 
-                // Saját üzenetünk azonnali megjelenítése nekünk
                 const chatBox = document.getElementById('chatBox');
                 const div = document.createElement('div');
-                div.className = "chat-msg leading-relaxed text-[13px] px-2 bg-slate-800/50 rounded-lg py-1";
+                div.className = "chat-msg leading-relaxed text-[13px] px-3 bg-slate-800/60 rounded-lg py-1.5 mt-1 border border-slate-700/50";
                 div.innerHTML = `<span class="font-bold text-emerald-400">${twitchUser}</span><span class="text-slate-500 mx-1">:</span><span class="text-white">${msg}</span>`;
                 chatBox.appendChild(div);
                 chatBox.scrollTop = chatBox.scrollHeight;
