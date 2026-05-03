@@ -1,7 +1,8 @@
 import os
 import threading
 import time
-from flask import Flask, render_template, request, redirect, url_for, session
+# JAVÍTÁS: Hozzáadtuk a jsonify-t az adatok küldéséhez
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
 from run import start_miner 
@@ -19,7 +20,6 @@ twitch_data_collection = db['twitch_data']
 ADMIN_USER = os.getenv('WEB_USERNAME', 'szaby')
 ADMIN_PASS = os.getenv('WEB_PASSWORD', '2003')
 
-# --- Ezek kellenek az Automata Chathoz ---
 TWITCH_USERNAME = os.getenv('TWITCH_USERNAME', '0szaby0')
 TWITCH_AUTH_TOKEN = os.getenv('TWITCH_AUTH_TOKEN', '')
 
@@ -34,9 +34,7 @@ def home():
             history = acc.get('history', [0])
             current_points = history[-1] if history else 0
             
-            # Grafikon adatok
             acc['chart_data'] = history[-40:] if len(history) > 0 else [0]
-            
             acc['current_points'] = current_points
             acc['formatted_points'] = f"{current_points:,}".replace(',', ' ')
             acc['diff'] = history[-1] - history[-2] if len(history) >= 2 else 0
@@ -54,6 +52,28 @@ def home():
             twitch_token=TWITCH_AUTH_TOKEN
         )
     return redirect(url_for('login'))
+
+# --- ÚJ RÉSZ: HÁTTÉRBEN TÖRTÉNŐ FRISSÍTÉSHEZ ---
+@app.route('/api/data')
+def api_data():
+    if 'username' not in session:
+        return jsonify({"error": "Nincs bejelentkezve"}), 401
+        
+    accounts = list(twitch_data_collection.find({}))
+    processed_accounts = []
+    for acc in accounts:
+        history = acc.get('history', [0])
+        current_points = history[-1] if history else 0
+        
+        processed_accounts.append({
+            "channel_name": acc['channel_name'],
+            "current_points": current_points,
+            "formatted_points": f"{current_points:,}".replace(',', ' '),
+            "diff": history[-1] - history[-2] if len(history) >= 2 else 0,
+            "is_online": acc.get('is_online', False),
+            "chart_data": history[-40:] if len(history) > 0 else [0]
+        })
+    return jsonify(processed_accounts)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
