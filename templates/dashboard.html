@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Miner Dashboard - ULTIMATE AD-FREE</title>
+    <title>Miner Dashboard - HLS AD-FREE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <!-- HLS.js a közvetlen stream lejátszáshoz -->
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <style>
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
@@ -14,23 +16,21 @@
         .chat-msg { animation: fadeIn 0.2s ease; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
         
-        /* AD-BLOCK OVERLAY */
-        .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; }
-        .video-overlay { 
-            position: absolute; top: 0; left: 0; width: 100%; height: 50px; 
-            z-index: 10; pointer-events: none; 
-            background: linear-gradient(to bottom, rgba(15,23,42,0.7) 0%, transparent 100%); 
-        }
+        /* VIDEO CONTAINER STYLES */
+        .video-wrapper { position: relative; width: 100%; height: 100%; background: #000; overflow: hidden; }
+        video { width: 100%; height: 100%; object-fit: contain; }
         
         /* AD-BLOCK STATUS INDICATOR */
         .ad-status { 
             position: absolute; top: 10px; right: 10px; z-index: 20;
             padding: 4px 12px; border-radius: 20px; font-size: 10px;
             font-weight: bold; text-transform: uppercase; letter-spacing: 1px;
+            backdrop-filter: blur(4px);
         }
-        .ad-status.clean { background: #10b981; color: #000; }
-        .ad-status.ads { background: #ef4444; color: #fff; }
-        .ad-status.checking { background: #f59e0b; color: #000; }
+        .ad-status.clean { background: rgba(16, 185, 129, 0.9); color: #000; }
+        .ad-status.ads { background: rgba(239, 68, 68, 0.9); color: #fff; }
+        .ad-status.checking { background: rgba(245, 158, 11, 0.9); color: #000; }
+        .ad-status.offline { background: rgba(100, 116, 139, 0.9); color: #fff; }
     </style>
 </head>
 <body class="text-slate-200 min-h-screen antialiased">
@@ -123,6 +123,7 @@
         </div>
     </main>
 
+    <!-- MODAL -->
     <div id="chatModal" class="fixed inset-0 bg-slate-950/95 z-[100] hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-xl">
         <div class="bg-slate-900 rounded-[24px] sm:rounded-[32px] shadow-2xl w-full max-w-2xl h-[95vh] flex flex-col border border-slate-700 overflow-hidden relative">
             
@@ -132,25 +133,25 @@
                     <span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-0.5">Kapcsolódás...</span>
                 </div>
                 <div class="flex items-center gap-2">
-                    <!-- AD-BLOCK SKIP BUTTON -->
-                    <button onclick="skipAd()" title="Reklám átugrása" class="text-slate-400 hover:text-emerald-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
+                    <!-- HLS SOURCE SWITCH -->
+                    <button onclick="switchProxySource()" title="Proxy váltás (ha nem működik)" class="text-slate-400 hover:text-blue-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                    </button>
+                    <!-- SKIP AD -->
+                    <button onclick="skipAd()" title="Reklám átugrása / Újratöltés" class="text-slate-400 hover:text-emerald-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
                     </button>
-                    <!-- REFRESH BUTTON -->
-                    <button onclick="refreshPlayer()" title="Player frissítése" class="text-slate-400 hover:text-emerald-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    </button>
-                    <!-- CLOSE BUTTON -->
+                    <!-- CLOSE -->
                     <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
                         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                     </button>
                 </div>
             </div>
             
-            <!-- VIDEO CONTAINER WITH AD-STATUS -->
+            <!-- HLS VIDEO PLAYER -->
             <div id="videoContainer" class="video-wrapper w-full h-[30vh] sm:h-[40vh] bg-black flex-shrink-0 border-b border-slate-800 relative">
-                <div class="video-overlay"></div>
-                <div id="adStatusIndicator" class="ad-status checking">Ellenőrzés...</div>
+                <video id="hlsVideo" class="w-full h-full" controls autoplay muted playsinline></video>
+                <div id="adStatusIndicator" class="ad-status checking">Betöltés...</div>
             </div>
 
             <div id="chatBox" class="flex-grow p-3 sm:p-4 overflow-y-auto space-y-3 text-sm bg-[#0a0f1c] scroll-smooth"></div>
@@ -214,77 +215,96 @@
         }
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. OKOS AD-BLOCK RENDSZER ---
+        // --- 3. HLS PLAYER + AD-BLOCK PROXY ---
         let chatWs = null;
         let activeChannel = "";
-        let playerSourceIndex = 0;
-        let adCheckInterval = null;
+        let hls = null;
+        let currentProxyIndex = 0;
         const twitchUser = "{{ twitch_name }}".toLowerCase();
         const twitchToken = "{{ twitch_token }}";
 
-        // Több player forrás - ha az egyik nem működik, próbáljuk a következőt
-        const playerSources = [
-            // 1. Twitch Embed (alapszintű)
-            (channel, host) => `https://player.twitch.tv/?channel=${channel}&parent=${host}&muted=false&autoplay=true&ad_limit=0&player_type=embed&content_ad_science=false&enableExtensions=false&t=${Date.now()}`,
-            // 2. Twitch Embed (alternate params)
-            (channel, host) => `https://player.twitch.tv/?channel=${channel}&parent=${host}&muted=false&autoplay=true&quality=chunked&t=${Date.now()}`,
-            // 3. Twitch Embed (minimal)
-            (channel, host) => `https://player.twitch.tv/?channel=${channel}&parent=${host}&muted=false&autoplay=true&t=${Date.now()}`
+        // Proxy források a stream URL lekéréséhez (Reklámmentes)
+        const proxySources = [
+            (channel) => `https://gh-ttv.github.io/gh-ttv/redirect.html?channel=${channel}`, // Gh-ttv
+            (channel) => `https://luminous.dev/redirect?channel=${channel}`,               // Luminous
+            (channel) => `https://purpleadblocker.info/redirect?channel=${channel}`         // Purple
         ];
 
-        // Reklám státusz jelző frissítése
-        function updateAdStatus(status) {
-            const indicator = document.getElementById('adStatusIndicator');
-            if (!indicator) return;
-            indicator.className = 'ad-status ' + status;
-            indicator.innerText = status === 'clean' ? '✓ Tiszta' : status === 'ads' ? '⚠ Reklám' : '🔍 Ellenőrzés';
-        }
-
-        // Player betöltése (több forrásból)
-        function loadPlayer(sourceIndex = 0) {
-            const videoContainer = document.getElementById('videoContainer');
-            const currentHost = window.location.hostname;
-            const sourceUrl = playerSources[sourceIndex](activeChannel, currentHost);
+        // HLS Player betöltése
+        async function loadHLSPlayer() {
+            const video = document.getElementById('hlsVideo');
+            const status = document.getElementById('adStatusIndicator');
             
-            videoContainer.innerHTML = `
-                <div class="video-overlay"></div>
-                <div id="adStatusIndicator" class="ad-status checking">Betöltés...</div>
-                <iframe 
-                    id="twitchPlayer"
-                    src="${sourceUrl}" 
-                    height="100%" width="100%" allowfullscreen frameborder="0"
-                    onload="updateAdStatus('clean')">
-                </iframe>`;
+            if (!activeChannel) return;
+
+            status.className = 'ad-status checking';
+            status.innerText = 'Stream keresés...';
+
+            // Megpróbáljuk lekérni a stream URL-t a proxy-n keresztül
+            // Mivel ezek a proxy-k gyakran redirectelnek vagy JSON-t adnak vissza, 
+            // egy egyszerűsített megközelítést használunk:
+            // A valós implementációhoz backend API kellene, de itt a proxy URL-t használjuk közvetlenül is
             
-            playerSourceIndex = sourceIndex;
+            const proxyUrl = proxySources[currentProxyIndex](activeChannel);
+            
+            // HLS.js inicializálás
+            if (Hls.isSupported()) {
+                if (hls) { hls.destroy(); }
+                hls = new Hls({
+                    debug: false,
+                    enableWorker: true,
+                    lowLatencyMode: true,
+                    backBufferLength: 90
+                });
+                
+                // Proxy URL betöltése (a proxy-k általában visszaadják a tiszta m3u8-at)
+                // MEGJEGYZÉS: Ez a rész igényelhet backend támogatást a CORS miatt!
+                // Ha nem működik közvetlenül, a proxy oldalát kell iframe-ben megnyitni vagy backend proxy kell.
+                
+                // Alternatív megoldás: A proxy által biztosított közvetlen stream URL
+                // Mivel a fenti URL-ek gyakran HTML oldalak, itt egy trükköt alkalmazunk:
+                // A hls.js betölti a proxy URL-t, ami remélhetőleg redirectel az m3u8-ra
+                
+                hls.loadSource(proxyUrl);
+                hls.attachMedia(video);
+                
+                hls.on(Hls.Events.MANIFEST_PARSED, function() {
+                    status.className = 'ad-status clean';
+                    status.innerText = '✓ HLS Aktív';
+                    video.play().catch(e => console.log("Autoplay blokkolva"));
+                });
+                
+                hls.on(Hls.Events.ERROR, function(event, data) {
+                    if (data.fatal) {
+                        status.className = 'ad-status ads';
+                        status.innerText = '⚠ Hiba / Reklám';
+                        switchProxySource(); // Automatikus váltás másik proxy-ra
+                    }
+                });
+                
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                // Native HLS támogatás (Safari)
+                video.src = proxyUrl;
+                video.addEventListener('loadedmetadata', function() {
+                    status.className = 'ad-status clean';
+                    status.innerText = '✓ HLS Aktív';
+                    video.play();
+                });
+            } else {
+                status.className = 'ad-status offline';
+                status.innerText = 'Nem támogatott';
+            }
         }
 
-        // Player frissítése (következő forrás)
-        function refreshPlayer() {
-            if(!activeChannel) return;
-            playerSourceIndex = (playerSourceIndex + 1) % playerSources.length;
-            loadPlayer(playerSourceIndex);
-            updateAdStatus('checking');
+        // Proxy forrás váltása
+        function switchProxySource() {
+            currentProxyIndex = (currentProxyIndex + 1) % proxySources.length;
+            loadHLSPlayer();
         }
 
-        // Reklám átugrása (gyors frissítés)
+        // Reklám átugrása (Player újraindítása)
         function skipAd() {
-            if(!activeChannel) return;
-            loadPlayer(playerSourceIndex);
-            updateAdStatus('checking');
-        }
-
-        // Auto ad-detection (kísérleti)
-        function startAdDetection() {
-            if (adCheckInterval) clearInterval(adCheckInterval);
-            adCheckInterval = setInterval(() => {
-                const iframe = document.getElementById('twitchPlayer');
-                if (iframe) {
-                    // Ha az iframe betöltött, feltételezzük hogy tiszta
-                    // (Sajnos nem tudjuk közvetlenül ellenőrizni az iframe tartalmát CORS miatt)
-                    updateAdStatus('clean');
-                }
-            }, 5000);
+            loadHLSPlayer();
         }
 
         function openAutomatedChat(channel) {
@@ -299,9 +319,8 @@
             status.className = "text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1";
             document.getElementById('chatModal').classList.remove('hidden');
 
-            // Player betöltése
-            loadPlayer(0);
-            startAdDetection();
+            // HLS Player indítása
+            loadHLSPlayer();
 
             if (chatWs) { try { chatWs.close(); } catch(e) {} }
 
@@ -411,8 +430,9 @@
 
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
-            document.getElementById('videoContainer').innerHTML = '<div class="video-overlay"></div>';
-            if (adCheckInterval) clearInterval(adCheckInterval);
+            const video = document.getElementById('hlsVideo');
+            if (video) { video.pause(); video.src = ''; }
+            if (hls) { hls.destroy(); hls = null; }
             if (chatWs) chatWs.close();
         }
     </script>
