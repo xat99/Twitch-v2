@@ -7,15 +7,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <style>
+        /* Modern görgetősáv */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #34d399; border-radius: 10px; }
-        body { background-color: #0f172a; } 
+        body { background-color: #0f172a; } /* Nagyon sötét, profi tőzsde-kék háttér */
     </style>
 </head>
-<body class="text-slate-200 min-h-screen font-sans">
+<body class="text-slate-200 min-h-screen font-sans antialiased">
 
-    <nav class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex justify-between items-center shadow-lg">
+    <nav class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex justify-between items-center shadow-lg relative z-50">
         <h1 class="text-xl font-bold tracking-wider text-slate-100">MINER <span class="text-emerald-400">PORTFOLIO</span></h1>
         <a href="/logout" class="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-white transition">Kilépés</a>
     </nav>
@@ -23,7 +24,7 @@
     <main class="max-w-7xl mx-auto px-4 py-8">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {% for acc in accounts %}
-            <div class="bg-slate-800 rounded-2xl border border-slate-700/50 p-5 shadow-xl relative overflow-hidden flex flex-col justify-between h-[240px]">
+            <div class="bg-slate-800 rounded-2xl border border-slate-700/50 p-5 shadow-xl relative overflow-hidden flex flex-col justify-between h-[280px]">
                 
                 <div class="flex justify-between items-center z-10 relative">
                     <div class="flex items-center gap-3">
@@ -45,7 +46,7 @@
                     {% endif %}
                 </div>
 
-                <div class="z-10 relative mt-4">
+                <div class="z-10 relative mt-3 flex-grow">
                     <div class="flex items-baseline gap-2">
                         <span class="text-3xl font-black tracking-tight text-white">{{ acc.formatted_points }}</span>
                         <span class="text-[10px] text-slate-400 uppercase tracking-widest">Pts</span>
@@ -60,11 +61,11 @@
                     </div>
                 </div>
 
-                <div class="absolute bottom-10 left-0 right-0 h-20 opacity-80" id="chart-{{ loop.index }}"></div>
+                <div class="absolute bottom-12 left-0 right-0 h-24 opacity-60 z-0 pointer-events-none" id="chart-{{ loop.index }}"></div>
 
-                <div class="z-10 relative mt-auto pt-4 border-t border-slate-700/50">
+                <div class="z-10 relative mt-auto pt-4 border-t border-slate-700/50 bg-slate-800">
                     {% if acc.is_online %}
-                        <button onclick="openChat('{{ acc.channel_name }}')" class="w-full bg-slate-700/50 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-transparent hover:border-emerald-500/50 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition duration-300">
+                        <button onclick="openChat('{{ acc.channel_name }}')" class="w-full bg-slate-700/50 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-transparent hover:border-emerald-500/50 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition duration-300 shadow-md">
                             Chat Megnyitása
                         </button>
                     {% else %}
@@ -77,31 +78,53 @@
 
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
+                    // Adatok átvétele Pythonból
                     var dataArray = {{ acc.chart_data | tojson }};
+                    
                     var options = {
                         series: [{ name: 'Pontok', data: dataArray }],
-                        chart: { type: 'area', height: 80, sparkline: { enabled: true }, animations: { enabled: false } },
-                        stroke: { curve: 'smooth', width: 2, colors: ['#34d399'] },
+                        chart: {
+                            type: 'area',
+                            height: 100, // Kicsit magasabb a szebb görbéért
+                            sparkline: { enabled: true }, // Eltünteti a rácsokat, csak a vonal marad
+                            animations: { enabled: false }
+                        },
+                        stroke: {
+                            curve: 'smooth', // Szép sima
+                            width: 2,
+                            colors: ['#34d399'] // Emerald-400
+                        },
                         fill: {
                             type: 'gradient',
-                            gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.0, stops: [0, 100] },
-                            colors: ['#34d399']
+                            gradient: {
+                                shadeIntensity: 1,
+                                opacityFrom: 0.5,
+                                opacityTo: 0.0,
+                                stops: [0, 100]
+                            },
+                            colors: ['#34d399'] // Színátmenet
                         },
-                        tooltip: { fixed: { enabled: false }, x: { show: false }, marker: { show: false } }
+                        tooltip: {
+                            fixed: { enabled: false },
+                            x: { show: false },
+                            marker: { show: false }
+                        }
                     };
-                    new ApexCharts(document.querySelector("#chart-{{ loop.index }}"), options).render();
+
+                    var chart = new ApexCharts(document.querySelector("#chart-{{ loop.index }}"), options);
+                    chart.render();
                 });
             </script>
             {% endfor %}
         </div>
     </main>
 
-    <div id="chatModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
+    <div id="chatModal" class="fixed inset-0 bg-black/90 z-[100] hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm transition-opacity duration-300 ease-in-out">
         <div class="bg-slate-800 rounded-xl shadow-2xl w-full max-w-md h-[80vh] flex flex-col border border-slate-600 overflow-hidden relative">
             
             <div class="bg-slate-900 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
                 <h3 id="chatTitle" class="text-sm font-bold text-emerald-400 uppercase tracking-widest">Csatorna Chat</h3>
-                <button onclick="closeChat()" class="text-slate-400 hover:text-white transition bg-slate-800 rounded-full p-1">
+                <button onclick="closeChat()" class="text-slate-400 hover:text-white transition bg-slate-800 rounded-full p-1.5 hover:rotate-90">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
@@ -117,6 +140,7 @@
             const chatContainer = document.getElementById('chatContainer');
             const currentHost = window.location.hostname;
             
+            // Hivatalos Twitch Iframe
             chatContainer.innerHTML = `
                 <iframe 
                     src="https://www.twitch.tv/embed/${channelName}/chat?parent=${currentHost}&darkpopout"
@@ -130,7 +154,7 @@
 
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
-            document.getElementById('chatContainer').innerHTML = ''; 
+            document.getElementById('chatContainer').innerHTML = ''; // Töröljük a RAM miatt
         }
     </script>
 </body>
