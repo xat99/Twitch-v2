@@ -134,6 +134,7 @@
     </div>
 
     <script>
+        // --- 1. PROFILKÉPEK BETÖLTÉSE ---
         async function loadTwitchAvatars() {
             const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}];
             for (let channel of channels) {
@@ -147,9 +148,9 @@
                 } catch (error) {}
             }
         }
-
         window.addEventListener('DOMContentLoaded', loadTwitchAvatars);
 
+        // --- 2. VALÓS IDEJŰ FRISSÍTÉS (60mp) ---
         async function fetchUpdates() {
             try {
                 let response = await fetch('/api/data');
@@ -182,10 +183,9 @@
                 });
             } catch (error) {}
         }
-
         setInterval(fetchUpdates, 60000);
 
-        // --- AUTOMATA CHAT RENDSZER ---
+        // --- 3. AUTOMATA CHAT RENDSZER ---
         let chatClient;
         let activeChannel = "";
         
@@ -210,23 +210,32 @@
                 finalToken = 'oauth:' + finalToken;
             }
 
+            // JAVÍTÁS: reconnect: false, hogy egyből lássuk, ha elutasítja a jelszót a Twitch!
             chatClient = new tmi.Client({
-                connection: { reconnect: true, secure: true },
+                connection: { reconnect: false, secure: true },
                 identity: { username: twitchUser, password: finalToken },
                 channels: [ channel ]
             });
 
-            chatClient.connect().catch(err => {
+            // EZ FOGJA KIÍRNI A HIBÁT, HA ROSSZ A JELSZÓ VAGY A FELHASZNÁLÓNÉV
+            chatClient.on('disconnected', (reason) => {
                 status.innerText = "Sikertelen Bejelentkezés!";
                 status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
-                chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-xs">
-                    <strong>Hiba:</strong> Lejárt a Token vagy rossz jelszó!<br>${err}
+                chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">
+                    <strong>Hiba a csatlakozáskor!</strong><br>
+                    A Twitch szervere elutasította a jelszót. <br><br>
+                    Biztos, hogy a Token a <b>${twitchUser}</b> fiókhoz lett generálva?
                 </div>`;
+            });
+
+            chatClient.connect().catch(err => {
+                console.log("Connect hiba:", err);
             });
 
             chatClient.on('connected', () => {
                 status.innerText = "Sikeresen Bejelentkezve";
                 status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
+                chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-gray-800 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
             });
 
             chatClient.on('message', (channel, tags, message, self) => {
