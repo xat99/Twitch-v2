@@ -15,36 +15,44 @@ mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
 client = MongoClient(mongo_url)
 db = client['twitch_miner_web']
 twitch_data_collection = db['twitch_data']
-config_collection = db['config']
 
 ADMIN_USER = os.getenv('WEB_USERNAME', 'szaby')
 ADMIN_PASS = os.getenv('WEB_PASSWORD', '2003')
+
+TWITCH_USERNAME = os.getenv('TWITCH_USERNAME', '0szaby0')
+TWITCH_AUTH_TOKEN = os.getenv('TWITCH_AUTH_TOKEN', '')
 
 @app.route('/')
 def home():
     if 'username' in session:
         accounts = list(twitch_data_collection.find({}))
-        
         processed_accounts = []
         for acc in accounts:
             acc['_id'] = str(acc['_id'])
             
+            # Kinyerjük a pontszám-történetet a grafikonhoz
             history = acc.get('history', [0])
             current_points = history[-1] if history else 0
+            
+            # Csak az utolsó 40 adatot küldjük át, hogy szép legyen a görbe
+            acc['chart_data'] = history[-40:] if len(history) > 0 else [0]
             
             acc['current_points'] = current_points
             acc['formatted_points'] = f"{current_points:,}".replace(',', ' ')
             acc['diff'] = history[-1] - history[-2] if len(history) >= 2 else 0
-            
-            # Élő státusz kinyerése
             acc['is_online'] = acc.get('is_online', False)
             
             processed_accounts.append(acc)
         
-        # RENDEZÉS: 1. Élők vannak legfelül. 2. Utána a pontszámok alapján csökkenve.
         processed_accounts.sort(key=lambda x: (x.get('is_online', False), x.get('current_points', 0)), reverse=True)
         
-        return render_template('dashboard.html', username=session['username'], accounts=processed_accounts)
+        return render_template(
+            'dashboard.html', 
+            username=session['username'], 
+            accounts=processed_accounts,
+            twitch_name=TWITCH_USERNAME,
+            twitch_token=TWITCH_AUTH_TOKEN
+        )
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -65,5 +73,4 @@ if __name__ == '__main__':
     flask_thread = threading.Thread(target=lambda: app.run(host='0.0.0.0', port=port, use_reloader=False))
     flask_thread.daemon = True
     flask_thread.start()
-    
     start_miner()
