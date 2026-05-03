@@ -3,19 +3,33 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Miner Dashboard - ULTIMATE PRO</title>
+    <title>Miner Dashboard - ULTIMATE AD-FREE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    <!-- Video.js + HLS.js a saját lejátszóhoz (Reklámmentes streamhez) -->
+    <link href="https://vjs.zencdn.net/8.10.0/video-js.css" rel="stylesheet" />
+    <script src="https://vjs.zencdn.net/8.10.0/video.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
     <style>
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
+        ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0f172a; } ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
         body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
-        .chat-msg { animation: fadeIn 0.2s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        /* AdBlocker jellegű overlay - segít elkerülni az interaktív reklámokat */
-        .video-wrapper { position: relative; overflow: hidden; width: 100%; height: 100%; }
-        .video-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 40px; pointer-events: none; z-index: 10; background: linear-gradient(to bottom, rgba(15,23,42,0.8), transparent); }
+        .chat-msg { animation: fadeIn 0.2s ease; } @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        
+        /* Video.js skin customização sötét témahoz */
+        .video-js { background-color: #000; border-radius: 0; }
+        .video-js .vjs-control-bar { background: linear-gradient(to top, rgba(15,23,42,0.9), transparent); border-radius: 0; }
+        .video-js .vjs-play-control:hover, .video-js .vjs-volume-panel:hover, .video-js .vjs-fullscreen-control:hover { background-color: #10b981; border-radius: 4px; }
+        .video-js .vjs-slider:hover { background-color: #10b981; }
+        .video-js .vjs-progress-control .vjs-play-progress { background-color: #10b981; }
+        .video-js .vjs-volume-level { background-color: #10b981; }
+        .video-js.vjs-fullscreen { position: fixed !important; z-index: 9999 !important; }
+        
+        /* Betöltő animáció */
+        #videoContainer .vjs-loading-spinner { display: none; }
+        #videoContainer .vjs-waiting { display: none; }
+        .player-loader { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 10; text-align: center; color: #10b981; }
+        .player-loader .spinner { border: 4px solid #334155; border-top: 4px solid #10b981; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="text-slate-200 min-h-screen antialiased">
@@ -23,10 +37,7 @@
     <nav class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
         <div class="flex items-center gap-3">
             <h1 class="text-xl font-black tracking-tighter text-white">MINER <span class="text-emerald-400">PRO</span></h1>
-            <span class="relative flex h-2 w-2 mt-1 hidden sm:flex">
-              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
+            <span class="relative flex h-2 w-2 mt-1 hidden sm:flex"><span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span><span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span></span>
         </div>
         <div class="flex items-center gap-4">
             <span class="text-[10px] text-slate-500 uppercase font-bold tracking-widest hidden sm:block">Felhasználó: {{ username }}</span>
@@ -38,299 +49,171 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
             {% for acc in accounts %}
             <div class="bg-slate-800/50 rounded-3xl border border-slate-700/50 shadow-2xl relative flex flex-col min-h-[360px] transition-all duration-300 hover:border-emerald-500/30">
-                
                 <div class="p-5">
                     <div class="flex justify-between items-center">
                         <div class="flex items-center gap-3">
                             <img id="avatar-{{ acc.channel_name }}" src="https://ui-avatars.com/api/?name={{ acc.channel_name }}&background=10b981&color=fff&bold=true" class="w-10 h-10 rounded-2xl shadow-lg object-cover border border-slate-700 transition-all duration-500" alt="{{ acc.channel_name }}">
                             <h3 class="font-bold text-white tracking-tight">{{ acc.channel_name }}</h3>
                         </div>
-                        <div id="status-{{ acc.channel_name }}">
-                            {% if acc.is_online %}
-                                <span class="flex items-center gap-1.5 bg-red-500/10 px-2 py-1 rounded-full border border-red-500/20">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                                    <span class="text-[9px] font-black text-red-500 uppercase tracking-tighter">Live</span>
-                                </span>
-                            {% endif %}
-                        </div>
+                        <div id="status-{{ acc.channel_name }}">{% if acc.is_online %}<span class="flex items-center gap-1.5 bg-red-500/10 px-2 py-1 rounded-full border border-red-500/20"><span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span><span class="text-[9px] font-black text-red-500 uppercase tracking-tighter">Live</span></span>{% endif %}</div>
                     </div>
-
                     <div class="mt-4">
                         <div class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Jelenlegi egyenleg</div>
-                        <div class="flex items-baseline gap-2">
-                            <span id="pts-{{ acc.channel_name }}" class="text-4xl font-black text-white tracking-tighter transition-all duration-500">{{ acc.formatted_points }}</span>
-                            <span class="text-xs font-bold text-emerald-400">PTS</span>
-                        </div>
-                        <div id="diff-{{ acc.channel_name }}" class="flex items-center gap-4 mt-2 h-6">
-                            {% if acc.diff != 0 %}
-                                <div class="flex items-center gap-1 {{ 'text-emerald-400' if acc.diff > 0 else 'text-red-400' }} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">
-                                    {{ '↑' if acc.diff > 0 else '↓' }} {{ acc.diff|abs }}
-                                </div>
-                            {% endif %}
-                        </div>
+                        <div class="flex items-baseline gap-2"><span id="pts-{{ acc.channel_name }}" class="text-4xl font-black text-white tracking-tighter transition-all duration-500">{{ acc.formatted_points }}</span><span class="text-xs font-bold text-emerald-400">PTS</span></div>
+                        <div id="diff-{{ acc.channel_name }}" class="flex items-center gap-4 mt-2 h-6">{% if acc.diff != 0 %}<div class="flex items-center gap-1 {{ 'text-emerald-400' if acc.diff > 0 else 'text-red-400' }} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">{{ '↑' if acc.diff > 0 else '↓' }} {{ acc.diff|abs }}</div>{% endif %}</div>
                     </div>
                 </div>
-
                 <div class="w-full px-2 mt-auto" id="chart-{{ acc.channel_name }}"></div>
-
-                <div class="p-5 bg-gradient-to-t from-slate-800 via-slate-800/90 to-transparent">
-                    {% if acc.is_online %}
-                        <button onclick="openAutomatedChat('{{ acc.channel_name }}')" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all duration-300 shadow-[0_10px_20px_rgba(16,185,129,0.2)] active:scale-95">
-                            Adás & Chat Megnyitása
-                        </button>
-                    {% else %}
-                        <div class="w-full bg-slate-700/50 text-slate-500 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-center border border-slate-700">
-                            Offline
-                        </div>
-                    {% endif %}
-                </div>
+                <div class="p-5 bg-gradient-to-t from-slate-800 via-slate-800/90 to-transparent">{% if acc.is_online %}<button onclick="openAutomatedChat('{{ acc.channel_name }}')" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all duration-300 shadow-[0_10px_20px_rgba(16,185,129,0.2)] active:scale-95">Adás & Chat Megnyitása</button>{% else %}<div class="w-full bg-slate-700/50 text-slate-500 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-center border border-slate-700">Offline</div>{% endif %}</div>
             </div>
-
             <script>
                 if (typeof window.charts === 'undefined') window.charts = {};
                 document.addEventListener('DOMContentLoaded', function () {
                     var rawData = {{ acc.chart_data | tojson }};
                     var dataArray = rawData.length > 1 ? rawData : [rawData[0], rawData[0]];
-                    var options = {
-                        series: [{ name: 'Pontok', data: dataArray }],
-                        chart: { type: 'area', height: 120, sparkline: { enabled: true }, animations: { enabled: true, easing: 'easeinout', speed: 800 } },
-                        stroke: { curve: 'smooth', width: 3, colors: ['#10b981'] },
-                        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.5, opacityTo: 0.0, stops: [0, 100] }, colors: ['#10b981'] },
-                        tooltip: { enabled: true, theme: 'dark', y: { formatter: function(val) { return val.toLocaleString('hu-HU') + ' PTS' } }, x: { show: false }, marker: { show: false } },
-                        markers: { size: 0, colors: ['#10b981'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } }
-                    };
-                    var chart = new ApexCharts(document.querySelector("#chart-{{ acc.channel_name }}"), options);
-                    chart.render();
-                    window.charts["{{ acc.channel_name }}"] = chart;
+                    var options = { series: [{ name: 'Pontok', data: dataArray }], chart: { type: 'area', height: 120, sparkline: { enabled: true }, animations: { enabled: true, easing: 'easeinout', speed: 800 } }, stroke: { curve: 'smooth', width: 3, colors: ['#10b981'] }, fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.5, opacityTo: 0.0, stops: [0, 100] }, colors: ['#10b981'] }, tooltip: { enabled: true, theme: 'dark', y: { formatter: function(val) { return val.toLocaleString('hu-HU') + ' PTS' } }, x: { show: false }, marker: { show: false } }, markers: { size: 0, colors: ['#10b981'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } } };
+                    var chart = new ApexCharts(document.querySelector("#chart-{{ acc.channel_name }}"), options); chart.render(); window.charts["{{ acc.channel_name }}"] = chart;
                 });
             </script>
             {% endfor %}
         </div>
     </main>
 
-    <!-- CHAT ÉS VIDEÓ MODAL -->
+    <!-- MODAL -->
     <div id="chatModal" class="fixed inset-0 bg-slate-950/95 z-[100] hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-xl">
         <div class="bg-slate-900 rounded-[24px] sm:rounded-[32px] shadow-2xl w-full max-w-2xl h-[95vh] flex flex-col border border-slate-700 overflow-hidden relative">
-            
             <div class="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 flex-shrink-0">
-                <div class="flex flex-col">
-                    <h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Csatorna</h3>
-                    <span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-0.5">Kapcsolódás...</span>
-                </div>
+                <div class="flex flex-col"><h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Csatorna</h3><span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-0.5">Stream betöltése...</span></div>
                 <div class="flex items-center gap-2">
-                    <!-- AD BLOCK REFRESH BUTTON -->
-                    <button onclick="refreshPlayer()" title="Reklám átugrása / Lejátszó frissítése" class="text-slate-400 hover:text-emerald-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-                    </button>
-                    <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
-                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
+                    <button onclick="refreshStream()" title="Stream frissítése" class="text-slate-400 hover:text-emerald-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg></button>
+                    <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl border border-slate-700"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
             </div>
             
-            <!-- VIDEO CONTAINER MODIFIED FOR ADBLOCK -->
-            <div id="videoContainer" class="video-wrapper w-full h-[30vh] sm:h-[40vh] bg-black flex-shrink-0 border-b border-slate-800 relative">
-                <div class="video-overlay"></div>
+            <!-- VIDEO CONTAINER - IDE TÖLTÖD BE A CUSTOM PLAYER-T -->
+            <div id="videoContainer" class="relative w-full h-[30vh] sm:h-[40vh] bg-black flex-shrink-0 border-b border-slate-800 overflow-hidden">
+                <!-- Video.js Player Element -->
+                <video-js id="customPlayer" class="vjs-big-play-centered w-full h-full" controls preload="auto" fluid crossorigin="anonymous"></video-js>
+                <!-- Loader Overlay -->
+                <div id="playerLoader" class="player-loader"><div class="spinner"></div><div class="text-xs font-bold uppercase tracking-wider">AdBlock Stream Betöltése...</div></div>
             </div>
 
             <div id="chatBox" class="flex-grow p-3 sm:p-4 overflow-y-auto space-y-3 text-sm bg-[#0a0f1c] scroll-smooth"></div>
-
             <div class="p-3 sm:p-4 bg-slate-900 border-t border-slate-800 flex-shrink-0">
-                <div class="flex gap-2">
-                    <input type="text" id="messageInput" placeholder="Írj valamit..." 
-                        class="flex-grow bg-slate-800 border border-slate-700 text-slate-200 rounded-xl sm:rounded-2xl px-4 py-2.5 sm:py-3 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm">
-                    <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-black transition-all shadow-md active:scale-95">Küldés</button>
-                </div>
+                <div class="flex gap-2"><input type="text" id="messageInput" placeholder="Írj valamit..." class="flex-grow bg-slate-800 border border-slate-700 text-slate-200 rounded-xl sm:rounded-2xl px-4 py-2.5 sm:py-3 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm"><button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-black transition-all shadow-md active:scale-95">Küldés</button></div>
             </div>
         </div>
     </div>
 
     <script>
-        // 1. Profilképek betöltése
-        async function loadTwitchAvatars() {
-            const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}];
-            for (let channel of channels) {
-                try {
-                    let response = await fetch(`https://decapi.me/twitch/avatar/${channel}`);
-                    let avatarUrl = await response.text();
-                    if (avatarUrl && avatarUrl.startsWith('http')) {
-                        let imgElement = document.getElementById(`avatar-${channel}`);
-                        if (imgElement) imgElement.src = avatarUrl;
-                    }
-                } catch (error) {}
-            }
-        }
-        window.addEventListener('DOMContentLoaded', loadTwitchAvatars);
+        // --- GLOBAL VÁLTOZÓK ---
+        let chatWs = null; let activeChannel = ""; let player = null; let hls = null;
+        const twitchUser = "{{ twitch_name }}".toLowerCase(); const twitchToken = "{{ twitch_token }}";
 
-        // 2. Valós idejű frissítés
-        async function fetchUpdates() {
-            try {
-                let response = await fetch('/api/data');
-                let accounts = await response.json();
-                accounts.forEach(acc => {
-                    let ptsSpan = document.getElementById('pts-' + acc.channel_name);
-                    if (ptsSpan && ptsSpan.innerText !== acc.formatted_points) {
-                        ptsSpan.innerText = acc.formatted_points;
-                        ptsSpan.classList.add('text-emerald-400');
-                        setTimeout(() => ptsSpan.classList.remove('text-emerald-400'), 1000);
-                    }
-                    if (window.charts && window.charts[acc.channel_name]) {
-                        let chartData = acc.chart_data.length > 1 ? acc.chart_data : [acc.chart_data[0], acc.chart_data[0]];
-                        window.charts[acc.channel_name].updateSeries([{ data: chartData }]);
-                    }
-                });
-            } catch (error) {}
-        }
-        setInterval(fetchUpdates, 60000);
+        // --- 1. PROFILKÉPEK ---
+        async function loadTwitchAvatars() { const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}]; for (let channel of channels) { try { let r = await fetch(`https://decapi.me/twitch/avatar/${channel}`); let u = await r.text(); if (u.startsWith('http')) { let el = document.getElementById(`avatar-${channel}`); if(el) el.src = u; } } catch(e) {} } } window.addEventListener('DOMContentLoaded', loadTwitchAvatars);
 
-        // --- 3. CHAT MOTOR + REKLÁMMENTESÍTŐ PLAYER ---
-        let chatWs = null;
-        let activeChannel = "";
-        
-        const twitchUser = "{{ twitch_name }}".toLowerCase();
-        const twitchToken = "{{ twitch_token }}";
+        // --- 2. PONTOK FRISSÍTÉS ---
+        async function fetchUpdates() { try { let r = await fetch('/api/data'); let accs = await r.json(); accs.forEach(acc => { let pts = document.getElementById('pts-' + acc.channel_name); if (pts && pts.innerText !== acc.formatted_points) { pts.innerText = acc.formatted_points; pts.classList.add('text-emerald-400'); setTimeout(() => pts.classList.remove('text-emerald-400'), 1000); } if (window.charts && window.charts[acc.channel_name]) { let d = acc.chart_data.length > 1 ? acc.chart_data : [acc.chart_data[0], acc.chart_data[0]]; window.charts[acc.channel_name].updateSeries([{ data: d }]); } let diff = document.getElementById('diff-' + acc.channel_name); if(diff){ if(acc.diff!==0){ let up=acc.diff>0; diff.innerHTML=`<div class="flex items-center gap-1 ${up?'text-emerald-400':'text-red-400'} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">${up?'↑':'↓'} ${Math.abs(acc.diff)}</div>`;}else{diff.innerHTML='';} } }); } catch(e) {} } setInterval(fetchUpdates, 60000);
 
-        function refreshPlayer() {
-            if(!activeChannel) return;
-            const videoContainer = document.getElementById('videoContainer');
-            const currentHost = window.location.hostname;
-            // AdBlock trükk: tizedmásodperc alapú cache-busting és speciális embed paraméterek
-            const adBlockFlags = "&ad_limit=0&player_type=embed&content_ad_science=false";
-            videoContainer.innerHTML = `
-                <div class="video-overlay"></div>
-                <iframe 
-                    src="https://player.twitch.tv/?channel=${activeChannel}&parent=${currentHost}&muted=false&autoplay=true${adBlockFlags}&t=${Date.now()}" 
-                    height="100%" width="100%" allowfullscreen frameborder="0"
-                    loading="lazy">
-                </iframe>`;
-        }
-
-        function openAutomatedChat(channel) {
-            activeChannel = channel.toLowerCase();
-            document.getElementById('chatTitle').innerText = channel + " • ÉLŐ ADÁS";
-            
-            const chatBox = document.getElementById('chatBox');
+        // --- 3. ADBLOCK STREAM BETÖLTÉS (A VARÁZSLAT) ---
+        async function loadAdFreeStream(channel) {
+            const container = document.getElementById('videoContainer');
+            const loader = document.getElementById('playerLoader');
             const status = document.getElementById('connStatus');
             
-            chatBox.innerHTML = "";
-            status.innerText = "Bejelentkezés...";
+            loader.style.display = 'block';
+            status.innerText = "HLS manifieszt lekérése (AdFree)...";
             status.className = "text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1";
+
+            // Előző player takarítása
+            if (hls) { hls.destroy(); hls = null; }
+            if (player) { player.dispose(); player = null; }
+
+            // Új video.js inicializálás
+            const videoElement = document.getElementById('customPlayer');
+            // Reseteljük a video taget, ha már létezett
+            videoElement.replaceWith(videoElement.cloneNode(true)); 
+            const newVideoEl = document.getElementById('customPlayer'); // Új referencia
+
+            player = videojs(newVideoEl, {
+                html5: { vhs: { overrideNative: true }, nativeTextTracks: false },
+                controls: true, responsive: true, fluid: true, playbackRates: [0.5, 1, 1.5, 2],
+                controlBar: { children: ['playToggle', 'volumePanel', 'currentTimeDisplay', 'progressControl', 'durationDisplay', 'fullscreenToggle'] }
+            }, function() { this.play().catch(()=>{}); }); // Autoplay kísérlet
+
+            // HLS.js beállítása Video.js-hez (VHS)
+            // FONTOS: Itt hívjuk meg a REKLÁM MENTES PROXY API-t
+            // Használjuk a ttv.lol publikus API-ját vagy egy saját proxyt, ha van.
+            // ttv.lol API: https://api.ttv.lol/v1/hls/{channel}
+            const proxyUrl = `https://api.ttv.lol/v1/hls/${channel}`; 
+
+            try {
+                // Ellenőrizzük, hogy az API él-e
+                const response = await fetch(proxyUrl);
+                if (!response.ok) throw new Error("Proxy nem elérhető");
+                
+                const data = await response.json();
+                // A ttv.lol általában egy .m3u8 url-t ad vissza a 'source' vagy 'url' mezőben
+                // Vagy direkt streameli. Dokumentációjuk szerint: { "source": "m3u8_url" }
+                const m3u8Url = data.source || data.url || data.playlist_url;
+
+                if (!m3u8Url) throw new Error("Nem található stream URL a válaszban");
+
+                status.innerText = "Reklámmentes stream csatlakoztatva ✓";
+                status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
+                loader.style.display = 'none';
+
+                // HLS betöltése Video.js-be
+                player.src({ src: m3u8Url, type: 'application/x-mpegURL' });
+                
+            } catch (err) {
+                console.error("AdFree stream hiba, fallback Twitch Embed:", err);
+                status.innerText = "Proxy hiba, fallback betöltése...";
+                status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
+                
+                // FALLBACK: Ha a proxy leáll, betöltjük a sima Twitch Embedet (ezzel lesz reklám)
+                loader.innerHTML = `<div class="text-red-400 text-xs">AdBlock proxy offline.<br>Twitch player betöltése...</div>`;
+                setTimeout(() => fallbackToTwitchEmbed(channel), 2000);
+            }
+        }
+
+        function fallbackToTwitchEmbed(channel) {
+            const host = window.location.hostname;
+            const videoContainer = document.getElementById('videoContainer');
+            videoContainer.innerHTML = `<iframe src="https://player.twitch.tv/?channel=${channel}&parent=${host}&muted=true" height="100%" width="100%" allowfullscreen frameborder="0"></iframe>`;
+        }
+
+        function refreshStream() { if(activeChannel) loadAdFreeStream(activeChannel); }
+
+        // --- 4. CHAT MOTOR (IRC) ---
+        function openAutomatedChat(channel) {
+            activeChannel = channel.toLowerCase();
+            document.getElementById('chatTitle').innerText = channel + " • ÉLŐ ADÁS (AdFree)";
             document.getElementById('chatModal').classList.remove('hidden');
+            document.getElementById('chatBox').innerHTML = "";
+            
+            // Stream betöltése
+            loadAdFreeStream(activeChannel);
 
-            // Player betöltése az új hirdetés-szűrő logikával
-            refreshPlayer();
-
+            // Chat IRC csatlakozás
             if (chatWs) { try { chatWs.close(); } catch(e) {} }
-
-            let finalToken = twitchToken;
-            if (finalToken && !finalToken.startsWith('oauth:')) {
-                finalToken = 'oauth:' + finalToken;
-            }
-
+            let finalToken = twitchToken; if (finalToken && !finalToken.startsWith('oauth:')) finalToken = 'oauth:' + finalToken;
+            
             chatWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
-
-            chatWs.onopen = () => {
-                chatWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n');
-                chatWs.send(`PASS ${finalToken}\r\n`);
-                chatWs.send(`NICK ${twitchUser}\r\n`);
-                chatWs.send(`JOIN #${activeChannel}\r\n`);
-            };
-
-            chatWs.onmessage = (event) => {
-                const lines = event.data.split('\r\n');
-                for(let line of lines) {
-                    if(!line.trim()) continue;
-                    if (line.startsWith('PING')) { chatWs.send('PONG :tmi.twitch.tv\r\n'); continue; }
-
-                    if (line.includes(' 001 ')) {
-                        status.innerText = "Kapcsolódva";
-                        status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
-                    }
-
-                    if (line.includes(' PRIVMSG ')) {
-                        let color = '#10b981'; 
-                        let displayName = 'Valaki';
-                        let message = '';
-                        let emotesTag = '';
-
-                        try {
-                            let remaining = line;
-                            if (remaining.startsWith('@')) {
-                                let spaceIdx = remaining.indexOf(' ');
-                                let tagsRaw = remaining.slice(1, spaceIdx).split(';');
-                                tagsRaw.forEach(tag => {
-                                    let parts = tag.split('=');
-                                    if (parts[0] === 'color' && parts[1]) color = parts[1];
-                                    if (parts[0] === 'display-name' && parts[1]) displayName = parts[1];
-                                    if (parts[0] === 'emotes' && parts[1]) emotesTag = parts[1];
-                                });
-                                remaining = remaining.slice(spaceIdx + 1);
-                            }
-                            
-                            let msgParts = remaining.split(' PRIVMSG ');
-                            if (msgParts.length > 1) {
-                                if (displayName === 'Valaki') {
-                                    let namePart = msgParts[0].split('!')[0];
-                                    displayName = namePart.startsWith(':') ? namePart.substring(1) : namePart;
-                                }
-                                let chanAndMsg = msgParts[1];
-                                let colonIdx = chanAndMsg.indexOf(' :');
-                                if (colonIdx !== -1) message = chanAndMsg.substring(colonIdx + 2);
-                            }
-                        } catch (e) {}
-
-                        if (message) {
-                            if (emotesTag) {
-                                let replacements = [];
-                                emotesTag.split('/').forEach(emote => {
-                                    let [id, posStr] = emote.split(':');
-                                    if (posStr) {
-                                        posStr.split(',').forEach(p => {
-                                            let [s, e] = p.split('-');
-                                            replacements.push({ start: parseInt(s), end: parseInt(e), id: id });
-                                        });
-                                    }
-                                });
-                                replacements.sort((a, b) => b.start - a.start);
-                                replacements.forEach(rep => {
-                                    let img = `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${rep.id}/default/dark/1.0" class="inline h-6 align-middle mx-0.5">`;
-                                    message = message.substring(0, rep.start) + img + message.substring(rep.end + 1);
-                                });
-                            }
-
-                            const div = document.createElement('div');
-                            div.className = "chat-msg leading-relaxed text-[13px] px-2";
-                            div.innerHTML = `<span style="color: ${color}" class="font-bold">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
-                            chatBox.appendChild(div);
-                            chatBox.scrollTop = chatBox.scrollHeight;
-                        }
-                    }
-                }
-            };
+            chatWs.onopen = () => { chatWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n'); chatWs.send(`PASS ${finalToken}\r\n`); chatWs.send(`NICK ${twitchUser}\r\n`); chatWs.send(`JOIN #${activeChannel}\r\n`); };
+            chatWs.onmessage = (event) => { const lines = event.data.split('\r\n'); for(let line of lines){ if(!line.trim()) continue; if(line.startsWith('PING')){ chatWs.send('PONG :tmi.twitch.tv\r\n'); continue; } if(line.includes(' 001 ')){ document.getElementById('connStatus').innerText = "Chat csatlakozva"; } if(line.includes(' PRIVMSG ')){ parseChatLine(line); } } };
         }
 
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const msg = input.value.trim();
-            if (chatWs && chatWs.readyState === 1 && msg) {
-                chatWs.send(`PRIVMSG #${activeChannel} :${msg}\r\n`);
-                const chatBox = document.getElementById('chatBox');
-                const div = document.createElement('div');
-                div.className = "chat-msg leading-relaxed text-[13px] px-3 bg-slate-800/60 rounded-lg py-1.5 mt-1 border border-slate-700/50";
-                div.innerHTML = `<span class="font-bold text-emerald-400">${twitchUser}</span><span class="text-slate-500 mx-1">:</span><span class="text-white">${msg}</span>`;
-                chatBox.appendChild(div);
-                chatBox.scrollTop = chatBox.scrollHeight;
-                input.value = "";
-            }
+        function parseChatLine(line) {
+            let color='#10b981', displayName='Valaki', message='', emotesTag='';
+            try { let rem=line; if(rem.startsWith('@')){ let si=rem.indexOf(' '); rem.slice(1,si).split(';').forEach(t=>{let p=t.split('='); if(p[0]==='color'&&p[1])color=p[1]; if(p[0]==='display-name'&&p[1])displayName=p[1]; if(p[0]==='emotes'&&p[1])emotesTag=p[1];}); rem=rem.slice(si+1);} let mp=rem.split(' PRIVMSG '); if(mp.length>1){ if(displayName==='Valaki'){let np=mp[0].split('!')[0]; displayName=np.startsWith(':')?np.substring(1):np;} let cm=mp[1]; let ci=cm.indexOf(' :'); if(ci!==-1)message=cm.substring(ci+2);} } catch(e){}
+            if(message){ if(emotesTag){ let reps=[]; emotesTag.split('/').forEach(e=>{let[id,ps]=e.split(':'); if(ps)ps.split(',').forEach(p=>{let[s,ee]=p.split('-'); reps.push({start:parseInt(s),end:parseInt(ee),id:id});});}); reps.sort((a,b)=>b.start-a.start); reps.forEach(r=>{let img=`<img src="https://static-cdn.jtvnw.net/emoticons/v2/${r.id}/default/dark/1.0" class="inline h-6 align-middle mx-0.5">`; message=message.substring(0,r.start)+img+message.substring(r.end+1);});} const div=document.createElement('div'); div.className="chat-msg leading-relaxed text-[13px] px-2"; div.innerHTML=`<span style="color:${color}" class="font-bold">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`; const box=document.getElementById('chatBox'); box.appendChild(div); box.scrollTop=box.scrollHeight; }
         }
 
-        document.getElementById('messageInput').addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
-
-        function closeChat() {
-            document.getElementById('chatModal').classList.add('hidden');
-            document.getElementById('videoContainer').innerHTML = '<div class="video-overlay"></div>';
-            if (chatWs) chatWs.close();
-        }
+        function sendMessage(){ const i=document.getElementById('messageInput'),m=i.value.trim(); if(chatWs&&chatWs.readyState===1&&m){ chatWs.send(`PRIVMSG #${activeChannel} :${m}\r\n`); const b=document.getElementById('chatBox'),d=document.createElement('div'); d.className="chat-msg leading-relaxed text-[13px] px-3 bg-slate-800/60 rounded-lg py-1.5 mt-1 border border-slate-700/50"; d.innerHTML=`<span class="font-bold text-emerald-400">${twitchUser}</span><span class="text-slate-500 mx-1">:</span><span class="text-white">${m}</span>`; b.appendChild(d); b.scrollTop=b.scrollHeight; i.value=""; } }
+        document.getElementById('messageInput').addEventListener("keypress",e=>{if(e.key==="Enter")sendMessage();});
+        function closeChat(){ document.getElementById('chatModal').classList.add('hidden'); if(hls){hls.destroy();hls=null;} if(player){player.dispose();player=null;} document.getElementById('videoContainer').innerHTML = `<video-js id="customPlayer" class="vjs-big-play-centered w-full h-full" controls preload="auto" fluid crossorigin="anonymous"></video-js><div id="playerLoader" class="player-loader"><div class="spinner"></div><div class="text-xs font-bold uppercase tracking-wider">AdBlock Stream Betöltése...</div></div>`; if(chatWs)chatWs.close(); }
     </script>
 </body>
 </html>
