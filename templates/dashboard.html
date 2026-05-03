@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Miner Dashboard - PRO</title>
+    <title>Miner Dashboard - ULTIMATE</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <style>
@@ -73,7 +73,7 @@
                 <div class="p-5 bg-gradient-to-t from-slate-800 via-slate-800/90 to-transparent">
                     {% if acc.is_online %}
                         <button onclick="openAutomatedChat('{{ acc.channel_name }}')" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all duration-300 shadow-[0_10px_20px_rgba(16,185,129,0.2)] active:scale-95">
-                            Automata Chat
+                            Adás & Chat Megnyitása
                         </button>
                     {% else %}
                         <div class="w-full bg-slate-700/50 text-slate-500 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-center border border-slate-700">
@@ -105,26 +105,29 @@
         </div>
     </main>
 
-    <div id="chatModal" class="fixed inset-0 bg-slate-950/90 z-[100] hidden flex items-center justify-center p-4 backdrop-blur-xl">
-        <div class="bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-xl h-[85vh] flex flex-col border border-slate-700 overflow-hidden relative">
+    <div id="chatModal" class="fixed inset-0 bg-slate-950/95 z-[100] hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-xl">
+        <div class="bg-slate-900 rounded-[24px] sm:rounded-[32px] shadow-2xl w-full max-w-2xl h-[95vh] flex flex-col border border-slate-700 overflow-hidden relative">
             
-            <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+            <div class="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 flex-shrink-0">
                 <div class="flex flex-col">
-                    <h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Csatorna Chat</h3>
-                    <span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1">Kapcsolódás...</span>
+                    <h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Csatorna</h3>
+                    <span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-0.5">Kapcsolódás...</span>
                 </div>
                 <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
             
-            <div id="chatBox" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm bg-black scroll-smooth"></div>
+            <div id="videoContainer" class="w-full h-[30vh] sm:h-[40vh] bg-black flex-shrink-0 border-b border-slate-800 relative">
+                </div>
 
-            <div class="p-4 bg-slate-900 border-t border-slate-800">
+            <div id="chatBox" class="flex-grow p-3 sm:p-4 overflow-y-auto space-y-3 text-sm bg-[#0a0f1c] scroll-smooth"></div>
+
+            <div class="p-3 sm:p-4 bg-slate-900 border-t border-slate-800 flex-shrink-0">
                 <div class="flex gap-2">
                     <input type="text" id="messageInput" placeholder="Írj valamit..." 
-                        class="flex-grow bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl px-5 py-3 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm">
-                    <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-2xl font-black transition-all shadow-md active:scale-95">Küldés</button>
+                        class="flex-grow bg-slate-800 border border-slate-700 text-slate-200 rounded-xl sm:rounded-2xl px-4 py-2.5 sm:py-3 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm">
+                    <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-5 sm:px-6 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl font-black transition-all shadow-md active:scale-95">Küldés</button>
                 </div>
             </div>
         </div>
@@ -179,7 +182,7 @@
         }
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. SAJÁT, NATÍV BEÉPÍTETT CHAT MOTOR ---
+        // --- 3. SAJÁT CHAT MOTOR + VIDEÓ + EMOJI DEKÓDOLÓ ---
         let chatWs = null;
         let activeChannel = "";
         
@@ -188,14 +191,20 @@
 
         function openAutomatedChat(channel) {
             activeChannel = channel.toLowerCase();
-            document.getElementById('chatTitle').innerText = channel + " • ÉLŐ CHAT";
+            document.getElementById('chatTitle').innerText = channel + " • ÉLŐ ADÁS";
+            
             const chatBox = document.getElementById('chatBox');
             const status = document.getElementById('connStatus');
+            const videoContainer = document.getElementById('videoContainer');
             
             chatBox.innerHTML = "";
             status.innerText = "Bejelentkezés...";
             status.className = "text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1";
             document.getElementById('chatModal').classList.remove('hidden');
+
+            // Beágyazzuk az élő videót a chat fölé! (alapból némítva)
+            const currentHost = window.location.hostname;
+            videoContainer.innerHTML = `<iframe src="https://player.twitch.tv/?channel=${activeChannel}&parent=${currentHost}&muted=true" height="100%" width="100%" allowfullscreen frameborder="0"></iframe>`;
 
             if (chatWs) { try { chatWs.close(); } catch(e) {} }
 
@@ -207,7 +216,6 @@
             chatWs = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
 
             chatWs.onopen = () => {
-                // JAVÍTVA: Hozzáadva a \r\n minden küldés végére!
                 chatWs.send('CAP REQ :twitch.tv/tags twitch.tv/commands\r\n');
                 chatWs.send(`PASS ${finalToken}\r\n`);
                 chatWs.send(`NICK ${twitchUser}\r\n`);
@@ -219,20 +227,17 @@
                 for(let line of lines) {
                     if(!line.trim()) continue;
                     
-                    // Szerver ping - JAVÍTVA a \r\n a válasznál
                     if (line.startsWith('PING')) {
                         chatWs.send('PONG :tmi.twitch.tv\r\n');
                         continue;
                     }
 
-                    // Sikeres bejelentkezés
                     if (line.includes(' 001 ')) {
                         status.innerText = "Sikeresen Bejelentkezve";
                         status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
                         chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-slate-800/50 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
                     }
 
-                    // Hibás jelszó
                     if (line.includes('Login authentication failed')) {
                         status.innerText = "Sikertelen Bejelentkezés!";
                         status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
@@ -245,6 +250,7 @@
                         let color = '#10b981'; 
                         let displayName = 'Valaki';
                         let message = '';
+                        let emotesTag = '';
 
                         try {
                             let remaining = line;
@@ -255,6 +261,8 @@
                                     let parts = tag.split('=');
                                     if (parts[0] === 'color' && parts[1]) color = parts[1];
                                     if (parts[0] === 'display-name' && parts[1]) displayName = parts[1];
+                                    // Kiszedjük a Twitch Emote kódokat!
+                                    if (parts[0] === 'emotes' && parts[1]) emotesTag = parts[1];
                                 });
                                 remaining = remaining.slice(spaceIdx + 1);
                             }
@@ -272,13 +280,35 @@
                                     message = chanAndMsg.substring(colonIdx + 2);
                                 }
                             }
-                        } catch (e) { console.log("Fordítási hiba:", e); }
+                        } catch (e) { console.log("Hiba:", e); }
 
                         if (message) {
+                            // --- EMOJI CSERE LOGIKA ---
+                            if (emotesTag) {
+                                let replacements = [];
+                                emotesTag.split('/').forEach(emote => {
+                                    let [id, posStr] = emote.split(':');
+                                    if (posStr) {
+                                        posStr.split(',').forEach(p => {
+                                            let [s, e] = p.split('-');
+                                            replacements.push({ start: parseInt(s), end: parseInt(e), id: id });
+                                        });
+                                    }
+                                });
+                                // Hátulról előre cserélünk, hogy ne csússzanak el a pozíciók
+                                replacements.sort((a, b) => b.start - a.start);
+                                replacements.forEach(rep => {
+                                    let img = `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${rep.id}/default/dark/1.0" class="inline h-6 align-middle mx-0.5">`;
+                                    message = message.substring(0, rep.start) + img + message.substring(rep.end + 1);
+                                });
+                            }
+
                             const div = document.createElement('div');
                             div.className = "chat-msg leading-relaxed text-[13px] px-2";
-                            div.innerHTML = `<span style="color: ${color}" class="font-bold">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
+                            div.innerHTML = `<span style="color: ${color}" class="font-bold drop-shadow-md">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
                             chatBox.appendChild(div);
+                            
+                            // Automatikus görgetés az aljára
                             chatBox.scrollTop = chatBox.scrollHeight;
                         }
                     }
@@ -289,7 +319,6 @@
                 if (status.innerText !== "Sikertelen Bejelentkezés!") {
                     status.innerText = "Lecsatlakozva";
                     status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
-                    chatBox.innerHTML += `<div class="text-red-500 text-xs text-center py-2 italic border-t border-slate-800/50 mt-2">A kapcsolat megszakadt a szerverrel.</div>`;
                 }
             };
         }
@@ -299,12 +328,11 @@
             const msg = input.value.trim();
             
             if (!chatWs || chatWs.readyState !== 1) {
-                alert("Nincs aktív kapcsolat a szerverrel! Kérlek zárd be a chatet, és nyisd meg újra.");
+                alert("Nincs aktív kapcsolat a szerverrel!");
                 return;
             }
 
             if (msg) {
-                // JAVÍTVA: A kiküldött üzenet végére is kötelező a \r\n
                 chatWs.send(`PRIVMSG #${activeChannel} :${msg}\r\n`);
                 
                 const chatBox = document.getElementById('chatBox');
@@ -324,6 +352,8 @@
 
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
+            // Töröljük a videót is, hogy ne menjen tovább a hang a háttérben
+            document.getElementById('videoContainer').innerHTML = '';
             if (chatWs) chatWs.close();
         }
     </script>
