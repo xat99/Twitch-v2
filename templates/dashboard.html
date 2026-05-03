@@ -6,11 +6,16 @@
     <title>Miner Dashboard - Valós Idejű Tőzsde</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    
+    <script src="https://cdn.jsdelivr.net/npm/tmi.js@1.8.5/dist/tmi.min.js"></script>
+    
     <style>
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #10b981; border-radius: 10px; }
         body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
+        .chat-msg { animation: fadeIn 0.2s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body class="text-slate-200 min-h-screen antialiased">
@@ -38,7 +43,6 @@
                     <div class="flex justify-between items-center">
                         <div class="flex items-center gap-3">
                             <img id="avatar-{{ acc.channel_name }}" src="https://ui-avatars.com/api/?name={{ acc.channel_name }}&background=10b981&color=fff&bold=true" class="w-10 h-10 rounded-2xl shadow-lg object-cover border border-slate-700 transition-all duration-500" alt="{{ acc.channel_name }}">
-                            
                             <h3 class="font-bold text-white tracking-tight">{{ acc.channel_name }}</h3>
                         </div>
                         <div id="status-{{ acc.channel_name }}">
@@ -57,7 +61,6 @@
                             <span id="pts-{{ acc.channel_name }}" class="text-4xl font-black text-white tracking-tighter transition-all duration-500">{{ acc.formatted_points }}</span>
                             <span class="text-xs font-bold text-emerald-400">PTS</span>
                         </div>
-                        
                         <div id="diff-{{ acc.channel_name }}" class="flex items-center gap-4 mt-2 h-6">
                             {% if acc.diff != 0 %}
                                 <div class="flex items-center gap-1 {{ 'text-emerald-400' if acc.diff > 0 else 'text-red-400' }} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">
@@ -72,8 +75,8 @@
 
                 <div class="p-5 bg-gradient-to-t from-slate-800 via-slate-800/90 to-transparent">
                     {% if acc.is_online %}
-                        <button onclick="openChat('{{ acc.channel_name }}')" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all duration-300 shadow-[0_10px_20px_rgba(16,185,129,0.2)] active:scale-95">
-                            Chat megnyitása
+                        <button onclick="openAutomatedChat('{{ acc.channel_name }}')" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all duration-300 shadow-[0_10px_20px_rgba(16,185,129,0.2)] active:scale-95">
+                            Automata Chat
                         </button>
                     {% else %}
                         <div class="w-full bg-slate-700/50 text-slate-500 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest text-center border border-slate-700">
@@ -85,36 +88,19 @@
 
             <script>
                 if (typeof window.charts === 'undefined') window.charts = {};
-
                 document.addEventListener('DOMContentLoaded', function () {
                     var rawData = {{ acc.chart_data | tojson }};
                     var dataArray = rawData.length > 1 ? rawData : [rawData[0], rawData[0]];
-                    
                     var options = {
                         series: [{ name: 'Pontok', data: dataArray }],
-                        chart: {
-                            type: 'area',
-                            height: 120,
-                            sparkline: { enabled: true },
-                            animations: { enabled: true, easing: 'easeinout', speed: 800 }
-                        },
+                        chart: { type: 'area', height: 120, sparkline: { enabled: true }, animations: { enabled: true, easing: 'easeinout', speed: 800 } },
                         stroke: { curve: 'smooth', width: 3, colors: ['#10b981'] },
-                        fill: {
-                            type: 'gradient',
-                            gradient: { shadeIntensity: 1, opacityFrom: 0.5, opacityTo: 0.0, stops: [0, 100] },
-                            colors: ['#10b981']
-                        },
-                        tooltip: { 
-                            enabled: true, theme: 'dark',
-                            y: { formatter: function(val) { return val.toLocaleString('hu-HU') + ' PTS' } },
-                            x: { show: false }, marker: { show: false }
-                        },
+                        fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.5, opacityTo: 0.0, stops: [0, 100] }, colors: ['#10b981'] },
+                        tooltip: { enabled: true, theme: 'dark', y: { formatter: function(val) { return val.toLocaleString('hu-HU') + ' PTS' } }, x: { show: false }, marker: { show: false } },
                         markers: { size: 0, colors: ['#10b981'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } }
                     };
-                    
                     var chart = new ApexCharts(document.querySelector("#chart-{{ acc.channel_name }}"), options);
                     chart.render();
-                    
                     window.charts["{{ acc.channel_name }}"] = chart;
                 });
             </script>
@@ -124,50 +110,46 @@
 
     <div id="chatModal" class="fixed inset-0 bg-slate-950/90 z-[100] hidden flex items-center justify-center p-4 backdrop-blur-xl">
         <div class="bg-slate-900 rounded-[32px] shadow-2xl w-full max-w-xl h-[85vh] flex flex-col border border-slate-700 overflow-hidden relative">
+            
             <div class="px-6 py-4 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
-                <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
-                    <h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Chat</h3>
+                <div class="flex flex-col">
+                    <h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Csatorna Chat</h3>
+                    <span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1">Kapcsolódás...</span>
                 </div>
                 <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl">
                     <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                 </button>
             </div>
-            <div class="flex-grow bg-black" id="chatContainer"></div>
+            
+            <div id="chatBox" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm bg-black"></div>
+
+            <div class="p-4 bg-slate-900 border-t border-slate-800">
+                <div class="flex gap-2">
+                    <input type="text" id="messageInput" placeholder="Írj valamit... (Automatikus Belépés)" 
+                        class="flex-grow bg-slate-800 border border-slate-700 text-slate-200 rounded-2xl px-5 py-3 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all text-sm">
+                    <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-6 py-3 rounded-2xl font-black transition-all shadow-md active:scale-95">Küldés</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        // --- 1. PROFILKÉPEK BETÖLTÉSE ---
         async function loadTwitchAvatars() {
-            // Létrehozzuk a csatornák listáját a Python adatokból
             const channels = [{% for acc in accounts %}"{{ acc.channel_name }}"{% if not loop.last %}, {% endif %}{% endfor %}];
-            
-            // Egyenként lekérjük a képeket, hogy ne terheljük túl a rendszert
             for (let channel of channels) {
                 try {
                     let response = await fetch(`https://decapi.me/twitch/avatar/${channel}`);
                     let avatarUrl = await response.text();
-                    
-                    // Ha a szerver visszaadta a hivatalos képlinket
                     if (avatarUrl && avatarUrl.startsWith('http')) {
                         let imgElement = document.getElementById(`avatar-${channel}`);
-                        if (imgElement) {
-                            imgElement.src = avatarUrl; // Kép lecserélése
-                        }
+                        if (imgElement) imgElement.src = avatarUrl;
                     }
-                } catch (error) {
-                    console.log(`Nem sikerült betölteni a profilképet: ${channel}`);
-                }
+                } catch (error) {}
             }
         }
 
-        // Amint betölt az oldal, azonnal indítjuk a profilképek keresését
-        window.addEventListener('DOMContentLoaded', () => {
-            loadTwitchAvatars();
-        });
+        window.addEventListener('DOMContentLoaded', loadTwitchAvatars);
 
-        // --- 2. VALÓS IDEJŰ PONT FRISSÍTÉS (60 Másodpercenként) ---
         async function fetchUpdates() {
             try {
                 let response = await fetch('/api/data');
@@ -198,24 +180,81 @@
                         }
                     }
                 });
-            } catch (error) {
-                console.log("Valós idejű frissítés hiba:", error);
-            }
+            } catch (error) {}
         }
 
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. CHAT ABLAK KEZELÉSE ---
-        function openChat(channelName) {
-            document.getElementById('chatTitle').innerText = channelName + " • ÉLŐ CHAT";
-            const chatContainer = document.getElementById('chatContainer');
-            const currentHost = window.location.hostname;
-            chatContainer.innerHTML = `<iframe src="https://www.twitch.tv/embed/${channelName}/chat?parent=${currentHost}&darkpopout" height="100%" width="100%" frameborder="0"></iframe>`;
+        // --- AUTOMATA CHAT RENDSZER ---
+        let chatClient;
+        let activeChannel = "";
+        
+        const twitchUser = "{{ twitch_name }}";
+        const twitchToken = "{{ twitch_token }}";
+
+        async function openAutomatedChat(channel) {
+            activeChannel = channel;
+            document.getElementById('chatTitle').innerText = channel + " • ÉLŐ CHAT";
+            const chatBox = document.getElementById('chatBox');
+            const status = document.getElementById('connStatus');
+            
+            chatBox.innerHTML = "";
+            status.innerText = "Bejelentkezés...";
+            status.className = "text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1";
             document.getElementById('chatModal').classList.remove('hidden');
+
+            if (chatClient) { try { await chatClient.disconnect(); } catch(e) {} }
+
+            let finalToken = twitchToken;
+            if (finalToken && !finalToken.startsWith('oauth:')) {
+                finalToken = 'oauth:' + finalToken;
+            }
+
+            chatClient = new tmi.Client({
+                connection: { reconnect: true, secure: true },
+                identity: { username: twitchUser, password: finalToken },
+                channels: [ channel ]
+            });
+
+            chatClient.connect().catch(err => {
+                status.innerText = "Sikertelen Bejelentkezés!";
+                status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
+                chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-xs">
+                    <strong>Hiba:</strong> Lejárt a Token vagy rossz jelszó!<br>${err}
+                </div>`;
+            });
+
+            chatClient.on('connected', () => {
+                status.innerText = "Sikeresen Bejelentkezve";
+                status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
+            });
+
+            chatClient.on('message', (channel, tags, message, self) => {
+                const div = document.createElement('div');
+                div.className = "chat-msg leading-relaxed text-[13px] px-2";
+                const color = tags.color || '#10b981'; 
+                div.innerHTML = `<span style="color: ${color}" class="font-bold">${tags['display-name']}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
+                chatBox.appendChild(div);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            });
         }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const msg = input.value.trim();
+            if (msg && chatClient && activeChannel) {
+                chatClient.say(activeChannel, msg).catch(e => alert("Hiba a küldés során!"));
+                input.value = "";
+            }
+        }
+
+        document.getElementById('messageInput').addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
+
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
-            document.getElementById('chatContainer').innerHTML = '';
+            if (chatClient) chatClient.disconnect();
         }
     </script>
 </body>
