@@ -19,9 +19,6 @@ twitch_data_collection = db['twitch_data']
 ADMIN_USER = os.getenv('WEB_USERNAME', 'szaby')
 ADMIN_PASS = os.getenv('WEB_PASSWORD', '2003')
 
-TWITCH_USERNAME = os.getenv('TWITCH_USERNAME', '0szaby0')
-TWITCH_AUTH_TOKEN = os.getenv('TWITCH_AUTH_TOKEN', '')
-
 @app.route('/')
 def home():
     if 'username' in session:
@@ -30,11 +27,10 @@ def home():
         for acc in accounts:
             acc['_id'] = str(acc['_id'])
             
-            # Kinyerjük a pontszám-történetet a grafikonhoz
             history = acc.get('history', [0])
             current_points = history[-1] if history else 0
             
-            # Csak az utolsó 40 adatot küldjük át, hogy szép legyen a görbe
+            # --- EZZEL RAJZOLJUK A GRAFIKONT ---
             acc['chart_data'] = history[-40:] if len(history) > 0 else [0]
             
             acc['current_points'] = current_points
@@ -44,15 +40,10 @@ def home():
             
             processed_accounts.append(acc)
         
+        # Élők előre, aztán pont szerint
         processed_accounts.sort(key=lambda x: (x.get('is_online', False), x.get('current_points', 0)), reverse=True)
         
-        return render_template(
-            'dashboard.html', 
-            username=session['username'], 
-            accounts=processed_accounts,
-            twitch_name=TWITCH_USERNAME,
-            twitch_token=TWITCH_AUTH_TOKEN
-        )
+        return render_template('dashboard.html', username=session['username'], accounts=processed_accounts)
     return redirect(url_for('login'))
 
 @app.route('/login', methods=['GET', 'POST'])
