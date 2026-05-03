@@ -11,8 +11,8 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'default_secret_key_2026_szaby')
-# 30 napig megjegyzi a bejelentkezést, ha bepipálod!
-app.permanent_session_lifetime = timedelta(days=30)
+# 30 napig megjegyzi a bejelentkezést, ha kéred!
+app.permanent_session_lifetime = timedelta(days=30) 
 
 mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
 client = MongoClient(mongo_url)
@@ -75,25 +75,22 @@ def api_data():
 @app.route('/api/log_error', methods=['POST'])
 def log_error():
     data = request.json
-    error_msg = data.get('error', 'Ismeretlen hiba')
-    channel = data.get('channel', 'Ismeretlen csatorna')
-    print(f"\n{'='*50}\n!!! FRONTEND CHAT HIBA ({channel}) !!!\nHIBA OKA: {error_msg}\n{'='*50}\n")
+    print(f"\n{'='*50}\n!!! FRONTEND CHAT HIBA ({data.get('channel')}) !!!\nHIBA OKA: {data.get('error')}\n{'='*50}\n")
     return jsonify({"status": "ok"})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    error = None
     if request.method == 'POST':
         if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
-            session.clear()
+            # Ha bepipálta a mentést, 30 napig nem kérjük újra!
             if request.form.get('remember'):
-                session.permanent = True  # Beállítja a 30 napos megjegyzést
+                session.permanent = True
+            else:
+                session.permanent = False
             session['username'] = ADMIN_USER
             return redirect(url_for('home'))
-        else:
-            error = "Hibás felhasználónév vagy jelszó!"
-            
-    return render_template('login.html', error=error)
+        return render_template('login.html', error="Hibás felhasználónév vagy jelszó!")
+    return render_template('login.html')
 
 @app.route('/logout')
 def logout():
