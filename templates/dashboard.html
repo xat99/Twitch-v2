@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Miner Dashboard - Interaktív Tőzsde</title>
+    <title>Miner Dashboard - Valós Idejű Tőzsde</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <style>
@@ -16,7 +16,13 @@
 <body class="text-slate-200 min-h-screen antialiased">
 
     <nav class="bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-6 py-4 flex justify-between items-center sticky top-0 z-50">
-        <h1 class="text-xl font-black tracking-tighter text-white">MINER <span class="text-emerald-400">PRO</span></h1>
+        <div class="flex items-center gap-3">
+            <h1 class="text-xl font-black tracking-tighter text-white">MINER <span class="text-emerald-400">PRO</span></h1>
+            <span class="relative flex h-2 w-2 mt-1 hidden sm:flex">
+              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+            </span>
+        </div>
         <div class="flex items-center gap-4">
             <span class="text-[10px] text-slate-500 uppercase font-bold tracking-widest hidden sm:block">Felhasználó: {{ username }}</span>
             <a href="/logout" class="bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white border border-red-500/50 px-4 py-1.5 rounded-full text-xs font-bold transition duration-300">Kilépés</a>
@@ -36,22 +42,24 @@
                             </div>
                             <h3 class="font-bold text-white tracking-tight">{{ acc.channel_name }}</h3>
                         </div>
-                        {% if acc.is_online %}
-                            <span class="flex items-center gap-1.5 bg-red-500/10 px-2 py-1 rounded-full border border-red-500/20">
-                                <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
-                                <span class="text-[9px] font-black text-red-500 uppercase tracking-tighter">Live</span>
-                            </span>
-                        {% endif %}
+                        <div id="status-{{ acc.channel_name }}">
+                            {% if acc.is_online %}
+                                <span class="flex items-center gap-1.5 bg-red-500/10 px-2 py-1 rounded-full border border-red-500/20">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse"></span>
+                                    <span class="text-[9px] font-black text-red-500 uppercase tracking-tighter">Live</span>
+                                </span>
+                            {% endif %}
+                        </div>
                     </div>
 
                     <div class="mt-4">
                         <div class="text-[10px] text-slate-500 uppercase font-bold tracking-widest mb-1">Jelenlegi egyenleg</div>
                         <div class="flex items-baseline gap-2">
-                            <span class="text-4xl font-black text-white tracking-tighter">{{ acc.formatted_points }}</span>
+                            <span id="pts-{{ acc.channel_name }}" class="text-4xl font-black text-white tracking-tighter transition-all duration-500">{{ acc.formatted_points }}</span>
                             <span class="text-xs font-bold text-emerald-400">PTS</span>
                         </div>
                         
-                        <div class="flex items-center gap-4 mt-2">
+                        <div id="diff-{{ acc.channel_name }}" class="flex items-center gap-4 mt-2 h-6">
                             {% if acc.diff != 0 %}
                                 <div class="flex items-center gap-1 {{ 'text-emerald-400' if acc.diff > 0 else 'text-red-400' }} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">
                                     {{ '↑' if acc.diff > 0 else '↓' }} {{ acc.diff|abs }}
@@ -61,7 +69,7 @@
                     </div>
                 </div>
 
-                <div class="w-full px-2 mt-auto" id="chart-{{ loop.index }}"></div>
+                <div class="w-full px-2 mt-auto" id="chart-{{ acc.channel_name }}"></div>
 
                 <div class="p-5 bg-gradient-to-t from-slate-800 via-slate-800/90 to-transparent">
                     {% if acc.is_online %}
@@ -77,6 +85,9 @@
             </div>
 
             <script>
+                // A grafikonokat eltároljuk egy közös memóriába, hogy később tudjuk frissíteni őket
+                if (typeof window.charts === 'undefined') window.charts = {};
+
                 document.addEventListener('DOMContentLoaded', function () {
                     var rawData = {{ acc.chart_data | tojson }};
                     var dataArray = rawData.length > 1 ? rawData : [rawData[0], rawData[0]];
@@ -92,34 +103,22 @@
                         stroke: { curve: 'smooth', width: 3, colors: ['#10b981'] },
                         fill: {
                             type: 'gradient',
-                            gradient: {
-                                shadeIntensity: 1,
-                                opacityFrom: 0.5,
-                                opacityTo: 0.0,
-                                stops: [0, 100]
-                            },
+                            gradient: { shadeIntensity: 1, opacityFrom: 0.5, opacityTo: 0.0, stops: [0, 100] },
                             colors: ['#10b981']
                         },
-                        // --- INTERAKTÍV RÉSZ BEKAPCSOLÁSA ---
                         tooltip: { 
-                            enabled: true,
-                            theme: 'dark',
-                            y: {
-                                title: { formatter: function() { return 'Mentett állapot: ' } },
-                                formatter: function(val) { return val.toLocaleString('hu-HU') + ' PTS' }
-                            },
-                            x: { show: false }, // Kiveszük az X tengely feliratát, mert az csak egy sorszám lenne
-                            marker: { show: false }
+                            enabled: true, theme: 'dark',
+                            y: { formatter: function(val) { return val.toLocaleString('hu-HU') + ' PTS' } },
+                            x: { show: false }, marker: { show: false }
                         },
-                        markers: {
-                            size: 0,
-                            colors: ['#10b981'],
-                            strokeColors: '#fff',
-                            strokeWidth: 2,
-                            hover: { size: 6 } // Ha ráhúzod az egeret/ujjad, egy kis fehér-zöld pötty jelenik meg a vonalon
-                        }
+                        markers: { size: 0, colors: ['#10b981'], strokeColors: '#fff', strokeWidth: 2, hover: { size: 6 } }
                     };
-                    new ApexCharts(document.querySelector("#chart-{{ loop.index }}"), options).render();
+                    
+                    var chart = new ApexCharts(document.querySelector("#chart-{{ acc.channel_name }}"), options);
+                    chart.render();
+                    
+                    // Elmentjük a nevén
+                    window.charts["{{ acc.channel_name }}"] = chart;
                 });
             </script>
             {% endfor %}
@@ -142,6 +141,48 @@
     </div>
 
     <script>
+        async function fetchUpdates() {
+            try {
+                let response = await fetch('/api/data');
+                let accounts = await response.json();
+
+                accounts.forEach(acc => {
+                    // 1. Pontok frissítése a képernyőn
+                    let ptsSpan = document.getElementById('pts-' + acc.channel_name);
+                    if (ptsSpan && ptsSpan.innerText !== acc.formatted_points) {
+                        ptsSpan.innerText = acc.formatted_points;
+                        // Kis "villanó" animáció frissítéskor
+                        ptsSpan.classList.add('text-emerald-400');
+                        setTimeout(() => ptsSpan.classList.remove('text-emerald-400'), 1000);
+                    }
+
+                    // 2. Grafikon frissítése
+                    if (window.charts && window.charts[acc.channel_name]) {
+                        let chartData = acc.chart_data.length > 1 ? acc.chart_data : [acc.chart_data[0], acc.chart_data[0]];
+                        window.charts[acc.channel_name].updateSeries([{ data: chartData }]);
+                    }
+
+                    // 3. Változás (diff) frissítése
+                    let diffContainer = document.getElementById('diff-' + acc.channel_name);
+                    if (diffContainer) {
+                        if (acc.diff !== 0) {
+                            let isUp = acc.diff > 0;
+                            let colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
+                            let arrow = isUp ? '↑' : '↓';
+                            diffContainer.innerHTML = `<div class="flex items-center gap-1 ${colorClass} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">${arrow} ${Math.abs(acc.diff)}</div>`;
+                        } else {
+                            diffContainer.innerHTML = '';
+                        }
+                    }
+                });
+            } catch (error) {
+                console.log("Valós idejű frissítés hiba:", error);
+            }
+        }
+
+        // 60 másodpercenként (60000 ms) teljesen magától lekéri és rajzolja az új adatokat!
+        setInterval(fetchUpdates, 60000);
+
         function openChat(channelName) {
             document.getElementById('chatTitle').innerText = channelName + " • ÉLŐ CHAT";
             const chatContainer = document.getElementById('chatContainer');
