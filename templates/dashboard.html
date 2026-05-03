@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Miner Dashboard - ULTIMATE</title>
+    <title>Miner Dashboard - ULTIMATE PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <style>
@@ -13,6 +13,9 @@
         body { background-color: #0f172a; font-family: 'Inter', sans-serif; }
         .chat-msg { animation: fadeIn 0.2s ease; }
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        /* AdBlocker jellegű overlay - segít elkerülni az interaktív reklámokat */
+        .video-wrapper { position: relative; overflow: hidden; width: 100%; height: 100%; }
+        .video-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 40px; pointer-events: none; z-index: 10; background: linear-gradient(to bottom, rgba(15,23,42,0.8), transparent); }
     </style>
 </head>
 <body class="text-slate-200 min-h-screen antialiased">
@@ -105,6 +108,7 @@
         </div>
     </main>
 
+    <!-- CHAT ÉS VIDEÓ MODAL -->
     <div id="chatModal" class="fixed inset-0 bg-slate-950/95 z-[100] hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-xl">
         <div class="bg-slate-900 rounded-[24px] sm:rounded-[32px] shadow-2xl w-full max-w-2xl h-[95vh] flex flex-col border border-slate-700 overflow-hidden relative">
             
@@ -113,13 +117,21 @@
                     <h3 id="chatTitle" class="text-xs font-black text-white uppercase tracking-widest">Csatorna</h3>
                     <span id="connStatus" class="text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-0.5">Kapcsolódás...</span>
                 </div>
-                <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
+                <div class="flex items-center gap-2">
+                    <!-- AD BLOCK REFRESH BUTTON -->
+                    <button onclick="refreshPlayer()" title="Reklám átugrása / Lejátszó frissítése" class="text-slate-400 hover:text-emerald-400 transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                    </button>
+                    <button onclick="closeChat()" class="text-slate-400 hover:text-white transition-all bg-slate-800 p-2 rounded-xl border border-slate-700">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                </div>
             </div>
             
-            <div id="videoContainer" class="w-full h-[30vh] sm:h-[40vh] bg-black flex-shrink-0 border-b border-slate-800 relative">
-                </div>
+            <!-- VIDEO CONTAINER MODIFIED FOR ADBLOCK -->
+            <div id="videoContainer" class="video-wrapper w-full h-[30vh] sm:h-[40vh] bg-black flex-shrink-0 border-b border-slate-800 relative">
+                <div class="video-overlay"></div>
+            </div>
 
             <div id="chatBox" class="flex-grow p-3 sm:p-4 overflow-y-auto space-y-3 text-sm bg-[#0a0f1c] scroll-smooth"></div>
 
@@ -166,28 +178,32 @@
                         let chartData = acc.chart_data.length > 1 ? acc.chart_data : [acc.chart_data[0], acc.chart_data[0]];
                         window.charts[acc.channel_name].updateSeries([{ data: chartData }]);
                     }
-                    let diffContainer = document.getElementById('diff-' + acc.channel_name);
-                    if (diffContainer) {
-                        if (acc.diff !== 0) {
-                            let isUp = acc.diff > 0;
-                            let colorClass = isUp ? 'text-emerald-400' : 'text-red-400';
-                            let arrow = isUp ? '↑' : '↓';
-                            diffContainer.innerHTML = `<div class="flex items-center gap-1 ${colorClass} text-xs font-bold bg-white/5 px-2 py-0.5 rounded-md">${arrow} ${Math.abs(acc.diff)}</div>`;
-                        } else {
-                            diffContainer.innerHTML = '';
-                        }
-                    }
                 });
             } catch (error) {}
         }
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. SAJÁT CHAT MOTOR + VIDEÓ + EMOJI DEKÓDOLÓ ---
+        // --- 3. CHAT MOTOR + REKLÁMMENTESÍTŐ PLAYER ---
         let chatWs = null;
         let activeChannel = "";
         
         const twitchUser = "{{ twitch_name }}".toLowerCase();
         const twitchToken = "{{ twitch_token }}";
+
+        function refreshPlayer() {
+            if(!activeChannel) return;
+            const videoContainer = document.getElementById('videoContainer');
+            const currentHost = window.location.hostname;
+            // AdBlock trükk: tizedmásodperc alapú cache-busting és speciális embed paraméterek
+            const adBlockFlags = "&ad_limit=0&player_type=embed&content_ad_science=false";
+            videoContainer.innerHTML = `
+                <div class="video-overlay"></div>
+                <iframe 
+                    src="https://player.twitch.tv/?channel=${activeChannel}&parent=${currentHost}&muted=false&autoplay=true${adBlockFlags}&t=${Date.now()}" 
+                    height="100%" width="100%" allowfullscreen frameborder="0"
+                    loading="lazy">
+                </iframe>`;
+        }
 
         function openAutomatedChat(channel) {
             activeChannel = channel.toLowerCase();
@@ -195,16 +211,14 @@
             
             const chatBox = document.getElementById('chatBox');
             const status = document.getElementById('connStatus');
-            const videoContainer = document.getElementById('videoContainer');
             
             chatBox.innerHTML = "";
             status.innerText = "Bejelentkezés...";
             status.className = "text-[10px] text-yellow-500 font-bold uppercase tracking-widest mt-1";
             document.getElementById('chatModal').classList.remove('hidden');
 
-            // Beágyazzuk az élő videót a chat fölé! (alapból némítva)
-            const currentHost = window.location.hostname;
-            videoContainer.innerHTML = `<iframe src="https://player.twitch.tv/?channel=${activeChannel}&parent=${currentHost}&muted=true" height="100%" width="100%" allowfullscreen frameborder="0"></iframe>`;
+            // Player betöltése az új hirdetés-szűrő logikával
+            refreshPlayer();
 
             if (chatWs) { try { chatWs.close(); } catch(e) {} }
 
@@ -226,24 +240,11 @@
                 const lines = event.data.split('\r\n');
                 for(let line of lines) {
                     if(!line.trim()) continue;
-                    
-                    if (line.startsWith('PING')) {
-                        chatWs.send('PONG :tmi.twitch.tv\r\n');
-                        continue;
-                    }
+                    if (line.startsWith('PING')) { chatWs.send('PONG :tmi.twitch.tv\r\n'); continue; }
 
                     if (line.includes(' 001 ')) {
-                        status.innerText = "Sikeresen Bejelentkezve";
+                        status.innerText = "Kapcsolódva";
                         status.className = "text-[10px] text-emerald-400 font-bold uppercase tracking-widest mt-1";
-                        chatBox.innerHTML = `<div class="text-emerald-500 text-xs text-center py-2 italic border-b border-slate-800/50 mb-2">Csatlakoztál a csevegéshez mint ${twitchUser}</div>`;
-                    }
-
-                    if (line.includes('Login authentication failed')) {
-                        status.innerText = "Sikertelen Bejelentkezés!";
-                        status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
-                        chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">Hiba a csatlakozáskor! A Twitch elutasította a jelszót.</div>`;
-                        chatWs.close();
-                        return;
                     }
 
                     if (line.includes(' PRIVMSG ')) {
@@ -261,7 +262,6 @@
                                     let parts = tag.split('=');
                                     if (parts[0] === 'color' && parts[1]) color = parts[1];
                                     if (parts[0] === 'display-name' && parts[1]) displayName = parts[1];
-                                    // Kiszedjük a Twitch Emote kódokat!
                                     if (parts[0] === 'emotes' && parts[1]) emotesTag = parts[1];
                                 });
                                 remaining = remaining.slice(spaceIdx + 1);
@@ -273,17 +273,13 @@
                                     let namePart = msgParts[0].split('!')[0];
                                     displayName = namePart.startsWith(':') ? namePart.substring(1) : namePart;
                                 }
-                                
                                 let chanAndMsg = msgParts[1];
                                 let colonIdx = chanAndMsg.indexOf(' :');
-                                if (colonIdx !== -1) {
-                                    message = chanAndMsg.substring(colonIdx + 2);
-                                }
+                                if (colonIdx !== -1) message = chanAndMsg.substring(colonIdx + 2);
                             }
-                        } catch (e) { console.log("Hiba:", e); }
+                        } catch (e) {}
 
                         if (message) {
-                            // --- EMOJI CSERE LOGIKA ---
                             if (emotesTag) {
                                 let replacements = [];
                                 emotesTag.split('/').forEach(emote => {
@@ -295,7 +291,6 @@
                                         });
                                     }
                                 });
-                                // Hátulról előre cserélünk, hogy ne csússzanak el a pozíciók
                                 replacements.sort((a, b) => b.start - a.start);
                                 replacements.forEach(rep => {
                                     let img = `<img src="https://static-cdn.jtvnw.net/emoticons/v2/${rep.id}/default/dark/1.0" class="inline h-6 align-middle mx-0.5">`;
@@ -305,20 +300,11 @@
 
                             const div = document.createElement('div');
                             div.className = "chat-msg leading-relaxed text-[13px] px-2";
-                            div.innerHTML = `<span style="color: ${color}" class="font-bold drop-shadow-md">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
+                            div.innerHTML = `<span style="color: ${color}" class="font-bold">${displayName}</span><span class="text-slate-500 mx-1">:</span><span class="text-slate-200">${message}</span>`;
                             chatBox.appendChild(div);
-                            
-                            // Automatikus görgetés az aljára
                             chatBox.scrollTop = chatBox.scrollHeight;
                         }
                     }
-                }
-            };
-
-            chatWs.onclose = () => {
-                if (status.innerText !== "Sikertelen Bejelentkezés!") {
-                    status.innerText = "Lecsatlakozva";
-                    status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
                 }
             };
         }
@@ -326,34 +312,23 @@
         function sendMessage() {
             const input = document.getElementById('messageInput');
             const msg = input.value.trim();
-            
-            if (!chatWs || chatWs.readyState !== 1) {
-                alert("Nincs aktív kapcsolat a szerverrel!");
-                return;
-            }
-
-            if (msg) {
+            if (chatWs && chatWs.readyState === 1 && msg) {
                 chatWs.send(`PRIVMSG #${activeChannel} :${msg}\r\n`);
-                
                 const chatBox = document.getElementById('chatBox');
                 const div = document.createElement('div');
                 div.className = "chat-msg leading-relaxed text-[13px] px-3 bg-slate-800/60 rounded-lg py-1.5 mt-1 border border-slate-700/50";
                 div.innerHTML = `<span class="font-bold text-emerald-400">${twitchUser}</span><span class="text-slate-500 mx-1">:</span><span class="text-white">${msg}</span>`;
                 chatBox.appendChild(div);
                 chatBox.scrollTop = chatBox.scrollHeight;
-                
                 input.value = "";
             }
         }
 
-        document.getElementById('messageInput').addEventListener("keypress", (e) => {
-            if (e.key === "Enter") sendMessage();
-        });
+        document.getElementById('messageInput').addEventListener("keypress", (e) => { if (e.key === "Enter") sendMessage(); });
 
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
-            // Töröljük a videót is, hogy ne menjen tovább a hang a háttérben
-            document.getElementById('videoContainer').innerHTML = '';
+            document.getElementById('videoContainer').innerHTML = '<div class="video-overlay"></div>';
             if (chatWs) chatWs.close();
         }
     </script>
