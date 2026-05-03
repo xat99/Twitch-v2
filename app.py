@@ -1,7 +1,6 @@
 import os
 import threading
 import time
-# JAVÍTÁS: Hozzáadtuk a jsonify-t az adatok küldéséhez
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -20,6 +19,7 @@ twitch_data_collection = db['twitch_data']
 ADMIN_USER = os.getenv('WEB_USERNAME', 'szaby')
 ADMIN_PASS = os.getenv('WEB_PASSWORD', '2003')
 
+# --- AUTOMATA CHAT ADATOK ---
 TWITCH_USERNAME = os.getenv('TWITCH_USERNAME', '0szaby0')
 TWITCH_AUTH_TOKEN = os.getenv('TWITCH_AUTH_TOKEN', '')
 
@@ -48,12 +48,11 @@ def home():
             'dashboard.html', 
             username=session['username'], 
             accounts=processed_accounts,
-            twitch_name=TWITCH_USERNAME,
-            twitch_token=TWITCH_AUTH_TOKEN
+            twitch_name=TWITCH_USERNAME,   # Küldjük a nevet
+            twitch_token=TWITCH_AUTH_TOKEN # Küldjük a tokent
         )
     return redirect(url_for('login'))
 
-# --- ÚJ RÉSZ: HÁTTÉRBEN TÖRTÉNŐ FRISSÍTÉSHEZ ---
 @app.route('/api/data')
 def api_data():
     if 'username' not in session:
