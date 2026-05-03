@@ -185,12 +185,21 @@
         }
         setInterval(fetchUpdates, 60000);
 
-        // --- 3. AUTOMATA CHAT RENDSZER ---
+        // --- 3. AUTOMATA CHAT RENDSZER (A HIÁNYZÓ RENDER NAPLÓZÁSSAL) ---
         let chatClient;
         let activeChannel = "";
         
         const twitchUser = "{{ twitch_name }}";
         const twitchToken = "{{ twitch_token }}";
+
+        // EZ HIÁNYZOTT: Segédfüggvény a Render logok felé!
+        function sendErrorToRender(errorMessage, channelName) {
+            fetch('/api/log_error', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ error: String(errorMessage), channel: channelName })
+            }).catch(e => console.log("Nem sikerült elküldeni a logot:", e));
+        }
 
         async function openAutomatedChat(channel) {
             activeChannel = channel;
@@ -210,26 +219,28 @@
                 finalToken = 'oauth:' + finalToken;
             }
 
-            // JAVÍTÁS: reconnect: false, hogy egyből lássuk, ha elutasítja a jelszót a Twitch!
             chatClient = new tmi.Client({
                 connection: { reconnect: false, secure: true },
                 identity: { username: twitchUser, password: finalToken },
                 channels: [ channel ]
             });
 
-            // EZ FOGJA KIÍRNI A HIBÁT, HA ROSSZ A JELSZÓ VAGY A FELHASZNÁLÓNÉV
+            // Hibakezelés kibővítve a Render felé
             chatClient.on('disconnected', (reason) => {
                 status.innerText = "Sikertelen Bejelentkezés!";
                 status.className = "text-[10px] text-red-500 font-bold uppercase tracking-widest mt-1";
                 chatBox.innerHTML = `<div class="bg-red-900/20 border border-red-500/30 text-red-400 p-4 rounded-xl text-sm">
                     <strong>Hiba a csatlakozáskor!</strong><br>
                     A Twitch szervere elutasította a jelszót. <br><br>
-                    Biztos, hogy a Token a <b>${twitchUser}</b> fiókhoz lett generálva?
+                    Biztos, hogy a Token a <b>${twitchUser}</b> fiókhoz lett generálva?<br><br>
+                    <i>További részletek a Render.com konzolban!</i>
                 </div>`;
+                sendErrorToRender("Disconnected from Twitch Chat. Reason: " + reason, channel);
             });
 
             chatClient.connect().catch(err => {
                 console.log("Connect hiba:", err);
+                sendErrorToRender("Connection Catch Error: " + err, channel);
             });
 
             chatClient.on('connected', () => {
@@ -252,7 +263,10 @@
             const input = document.getElementById('messageInput');
             const msg = input.value.trim();
             if (msg && chatClient && activeChannel) {
-                chatClient.say(activeChannel, msg).catch(e => alert("Hiba a küldés során!"));
+                chatClient.say(activeChannel, msg).catch(e => {
+                    alert("Hiba a küldés során!");
+                    sendErrorToRender("Message Send Error: " + e, activeChannel);
+                });
                 input.value = "";
             }
         }
