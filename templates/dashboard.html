@@ -3,14 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Miner Dashboard - Tőzsdei Nézet</title>
+    <title>Miner Dashboard - Automata Tőzsde</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tmi.js/1.8.5/tmi.min.js"></script>
+    
     <style>
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #34d399; border-radius: 10px; }
-        body { background-color: #0f172a; } /* Sötét tőzsdei kék */
+        body { background-color: #0f172a; }
+        .chat-msg { animation: fadeIn 0.2s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body class="text-slate-200 min-h-screen font-sans">
@@ -64,8 +69,8 @@
 
                 <div class="z-10 relative mt-auto pt-4 border-t border-slate-700/50">
                     {% if acc.is_online %}
-                        <button onclick="openChat('{{ acc.channel_name }}')" class="w-full bg-slate-700/50 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-transparent hover:border-emerald-500/50 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition duration-300">
-                            Chat Megnyitása
+                        <button onclick="openAutomatedChat('{{ acc.channel_name }}')" class="w-full bg-slate-700/50 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-transparent hover:border-emerald-500/50 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition duration-300">
+                            Automata Chat
                         </button>
                     {% else %}
                         <button disabled class="w-full bg-slate-800/50 text-slate-600 py-2 rounded-lg text-xs font-bold uppercase tracking-widest cursor-not-allowed">
@@ -96,42 +101,107 @@
         </div>
     </main>
 
-    <div id="chatModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
-        <div class="bg-slate-800 rounded-xl shadow-2xl w-full max-w-md h-[80vh] flex flex-col border border-slate-600 overflow-hidden relative">
+    <div id="chatModal" class="fixed inset-0 bg-slate-900/95 z-50 hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
+        <div class="bg-slate-800 rounded-xl w-full max-w-lg h-[85vh] flex flex-col border border-slate-700 shadow-2xl">
             
-            <div class="bg-slate-900 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
-                <h3 id="chatTitle" class="text-sm font-bold text-emerald-400 uppercase tracking-widest">Csatorna Chat</h3>
-                <button onclick="closeChat()" class="text-slate-400 hover:text-white transition bg-slate-800 rounded-full p-1">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                </button>
+            <div class="bg-slate-900 p-4 border-b border-slate-700 flex justify-between items-center">
+                <div class="flex flex-col">
+                    <h3 id="chatTitle" class="font-bold text-slate-200">Csatorna Chat</h3>
+                    <span id="connStatus" class="text-[10px] text-yellow-500 uppercase tracking-widest">Inicializálás...</span>
+                </div>
+                <button onclick="closeChat()" class="text-slate-400 hover:text-white text-3xl leading-none">&times;</button>
             </div>
             
-            <div class="flex-grow bg-black" id="chatContainer">
+            <div id="chatBox" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm bg-[#0a0f1c]">
                 </div>
+
+            <div class="p-4 bg-slate-900 border-t border-slate-700">
+                <div class="flex gap-2">
+                    <input type="text" id="messageInput" placeholder="Üzenet küldése (Automatikusan belépve)..." 
+                        class="flex-grow bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 text-sm">
+                    <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-5 py-2.5 rounded-lg font-bold transition shadow-md">Küldés</button>
+                </div>
+            </div>
         </div>
     </div>
 
     <script>
-        function openChat(channelName) {
-            document.getElementById('chatTitle').innerText = channelName + " CHATJE";
-            const chatContainer = document.getElementById('chatContainer');
-            const currentHost = window.location.hostname;
+        let client;
+        let currentChannel = "";
+        
+        // Ezt az app.py küldi át
+        const twitchUser = "{{ twitch_name }}";
+        const twitchToken = "{{ twitch_token }}";
+
+        async function openAutomatedChat(channel) {
+            currentChannel = channel;
+            document.getElementById('chatTitle').innerText = channel + " Chatje";
+            const chatBox = document.getElementById('chatBox');
+            const status = document.getElementById('connStatus');
             
-            // Hivatalos Twitch Iframe
-            chatContainer.innerHTML = `
-                <iframe 
-                    src="https://www.twitch.tv/embed/${channelName}/chat?parent=${currentHost}&darkpopout"
-                    height="100%" 
-                    width="100%" 
-                    frameborder="0">
-                </iframe>
-            `;
+            chatBox.innerHTML = "";
+            status.innerText = "Csatlakozás folyamatban...";
+            status.className = "text-[10px] text-yellow-500 uppercase tracking-widest";
+            
             document.getElementById('chatModal').classList.remove('hidden');
+
+            if (client) { try { await client.disconnect(); } catch(e) {} }
+
+            // Token formázása biztonság kedvéért
+            let finalToken = twitchToken;
+            if (finalToken && !finalToken.startsWith('oauth:')) {
+                finalToken = 'oauth:' + finalToken;
+            }
+
+            // Kapcsolódás a megbízható cdnjs motorral
+            client = new tmi.Client({
+                options: { debug: false },
+                identity: { username: twitchUser, password: finalToken },
+                channels: [ channel ]
+            });
+
+            client.connect().catch(err => {
+                status.innerText = "Sikertelen bejelentkezés!";
+                status.className = "text-[10px] text-red-500 uppercase tracking-widest";
+                chatBox.innerHTML = `<div class="text-red-400 bg-red-900/20 p-3 rounded-lg border border-red-500/50">
+                    <strong>Hiba:</strong> ${err}<br><br>
+                    Győződj meg róla, hogy a Renderen jó a TWITCH_AUTH_TOKEN! (oauth:xxxxxxxx formátum)
+                </div>`;
+            });
+
+            client.on('connected', () => {
+                status.innerText = "Sikeresen Csatlakozva (Automata)";
+                status.className = "text-[10px] text-emerald-400 uppercase tracking-widest";
+            });
+
+            client.on('message', (channel, tags, message, self) => {
+                const div = document.createElement('div');
+                div.className = "chat-msg leading-relaxed";
+                const color = tags.color || '#34d399'; 
+                div.innerHTML = `<span style="color: ${color}" class="font-bold">${tags['display-name'] || tags.username}</span>: <span class="text-slate-300">${message}</span>`;
+                chatBox.appendChild(div);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            });
         }
+
+        function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const msg = input.value.trim();
+            if (msg && client && currentChannel) {
+                client.say(currentChannel, msg).catch(e => {
+                    alert("Hiba küldéskor! Lejárt a Token?");
+                });
+                input.value = "";
+            }
+        }
+
+        document.getElementById('messageInput').addEventListener("keypress", (e) => {
+            if (e.key === "Enter") sendMessage();
+        });
 
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
-            document.getElementById('chatContainer').innerHTML = ''; // Töröljük a RAM miatt
+            if (client) client.disconnect();
         }
     </script>
 </body>
