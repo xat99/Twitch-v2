@@ -5,29 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Miner Dashboard - Tőzsdei Nézet</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tmi.js/1.8.5/tmi.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <style>
-        /* Modern görgetősáv */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #0f172a; }
-        ::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 10px; }
-        body { background-color: #0f172a; } /* Nagyon sötét, profi tőzsde-kék háttér */
-        .chat-msg { animation: fadeIn 0.2s ease; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        ::-webkit-scrollbar-thumb { background: #34d399; border-radius: 10px; }
+        body { background-color: #0f172a; } /* Sötét tőzsdei kék */
     </style>
 </head>
 <body class="text-slate-200 min-h-screen font-sans">
 
-    <nav class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex justify-between items-center shadow-md">
+    <nav class="bg-slate-900 border-b border-slate-800 px-6 py-4 flex justify-between items-center shadow-lg">
         <h1 class="text-xl font-bold tracking-wider text-slate-100">MINER <span class="text-emerald-400">PORTFOLIO</span></h1>
         <a href="/logout" class="text-xs font-bold uppercase tracking-widest text-slate-400 hover:text-white transition">Kilépés</a>
     </nav>
 
     <main class="max-w-7xl mx-auto px-4 py-8">
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
             {% for acc in accounts %}
-            <div class="bg-slate-800 rounded-2xl border border-slate-700/50 p-5 shadow-lg relative overflow-hidden flex flex-col justify-between h-[240px]">
+            <div class="bg-slate-800 rounded-2xl border border-slate-700/50 p-5 shadow-xl relative overflow-hidden flex flex-col justify-between h-[240px]">
                 
                 <div class="flex justify-between items-center z-10 relative">
                     <div class="flex items-center gap-3">
@@ -68,7 +64,7 @@
 
                 <div class="z-10 relative mt-auto pt-4 border-t border-slate-700/50">
                     {% if acc.is_online %}
-                        <button onclick="openAutomatedChat('{{ acc.channel_name }}')" class="w-full bg-slate-700/50 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-transparent hover:border-emerald-500/50 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition duration-300">
+                        <button onclick="openChat('{{ acc.channel_name }}')" class="w-full bg-slate-700/50 hover:bg-emerald-500/20 text-emerald-400 hover:text-emerald-300 border border-transparent hover:border-emerald-500/50 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition duration-300">
                             Chat Megnyitása
                         </button>
                     {% else %}
@@ -81,146 +77,61 @@
 
             <script>
                 document.addEventListener('DOMContentLoaded', function () {
-                    // Adatok átvétele Pythonból
                     var dataArray = {{ acc.chart_data | tojson }};
-                    
                     var options = {
                         series: [{ name: 'Pontok', data: dataArray }],
-                        chart: {
-                            type: 'area',
-                            height: 80,
-                            sparkline: { enabled: true }, // Eltünteti a rácsokat, csak a vonal marad
-                            animations: { enabled: false }
-                        },
-                        stroke: {
-                            curve: 'smooth', // Ettől lesz olyan szép sima, mint a képeden
-                            width: 2,
-                            colors: ['#34d399'] // Emerald-400 (Világoszöld vonal)
-                        },
+                        chart: { type: 'area', height: 80, sparkline: { enabled: true }, animations: { enabled: false } },
+                        stroke: { curve: 'smooth', width: 2, colors: ['#34d399'] },
                         fill: {
                             type: 'gradient',
-                            gradient: {
-                                shadeIntensity: 1,
-                                opacityFrom: 0.4,
-                                opacityTo: 0.0,
-                                stops: [0, 100]
-                            },
-                            colors: ['#34d399'] // Színátmenet színe
+                            gradient: { shadeIntensity: 1, opacityFrom: 0.4, opacityTo: 0.0, stops: [0, 100] },
+                            colors: ['#34d399']
                         },
-                        tooltip: {
-                            fixed: { enabled: false },
-                            x: { show: false },
-                            y: { title: { formatter: function (seriesName) { return '' } } },
-                            marker: { show: false }
-                        }
+                        tooltip: { fixed: { enabled: false }, x: { show: false }, marker: { show: false } }
                     };
-
-                    var chart = new ApexCharts(document.querySelector("#chart-{{ loop.index }}"), options);
-                    chart.render();
+                    new ApexCharts(document.querySelector("#chart-{{ loop.index }}"), options).render();
                 });
             </script>
             {% endfor %}
         </div>
     </main>
 
-    <div id="chatModal" class="fixed inset-0 bg-slate-900/95 z-50 hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
-        <div class="bg-slate-800 rounded-xl w-full max-w-lg h-[85vh] flex flex-col border border-slate-700 shadow-2xl">
+    <div id="chatModal" class="fixed inset-0 bg-black/90 z-50 hidden flex items-center justify-center p-2 sm:p-4 backdrop-blur-sm">
+        <div class="bg-slate-800 rounded-xl shadow-2xl w-full max-w-md h-[80vh] flex flex-col border border-slate-600 overflow-hidden relative">
             
-            <div class="bg-slate-900 p-4 border-b border-slate-700 flex justify-between items-center">
-                <div class="flex flex-col">
-                    <h3 id="chatTitle" class="font-bold text-slate-200">Csatorna Chat</h3>
-                    <span id="connStatus" class="text-[10px] text-slate-500 uppercase tracking-widest">Inicializálás...</span>
-                </div>
-                <button onclick="closeChat()" class="text-slate-400 hover:text-white text-3xl leading-none">&times;</button>
+            <div class="bg-slate-900 px-4 py-3 border-b border-slate-700 flex justify-between items-center">
+                <h3 id="chatTitle" class="text-sm font-bold text-emerald-400 uppercase tracking-widest">Csatorna Chat</h3>
+                <button onclick="closeChat()" class="text-slate-400 hover:text-white transition bg-slate-800 rounded-full p-1">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
             </div>
             
-            <div id="chatBox" class="flex-grow p-4 overflow-y-auto space-y-3 text-sm bg-[#0a0f1c]">
+            <div class="flex-grow bg-black" id="chatContainer">
                 </div>
-
-            <div class="p-4 bg-slate-900 border-t border-slate-700">
-                <div class="flex gap-2">
-                    <input type="text" id="messageInput" placeholder="Üzenet küldése..." 
-                        class="flex-grow bg-slate-800 border border-slate-600 text-slate-200 rounded-lg px-4 py-2.5 focus:outline-none focus:border-emerald-500 text-sm">
-                    <button onclick="sendMessage()" class="bg-emerald-500 hover:bg-emerald-400 text-slate-900 px-5 py-2.5 rounded-lg font-bold transition shadow-md">Küldés</button>
-                </div>
-            </div>
         </div>
     </div>
 
     <script>
-        let client;
-        let currentChannel = "";
-        
-        const twitchUser = "{{ twitch_name }}";
-        const twitchToken = "{{ twitch_token }}";
-
-        async function openAutomatedChat(channel) {
-            currentChannel = channel;
-            document.getElementById('chatTitle').innerText = channel + " Chatje";
-            const chatBox = document.getElementById('chatBox');
-            const status = document.getElementById('connStatus');
+        function openChat(channelName) {
+            document.getElementById('chatTitle').innerText = channelName + " CHATJE";
+            const chatContainer = document.getElementById('chatContainer');
+            const currentHost = window.location.hostname;
             
-            chatBox.innerHTML = "";
-            status.innerText = "Csatlakozás...";
-            status.className = "text-[10px] text-yellow-500 uppercase tracking-widest";
-            
+            // Hivatalos Twitch Iframe
+            chatContainer.innerHTML = `
+                <iframe 
+                    src="https://www.twitch.tv/embed/${channelName}/chat?parent=${currentHost}&darkpopout"
+                    height="100%" 
+                    width="100%" 
+                    frameborder="0">
+                </iframe>
+            `;
             document.getElementById('chatModal').classList.remove('hidden');
-
-            if (client) { try { await client.disconnect(); } catch(e) {} }
-
-            let finalToken = twitchToken;
-            if (finalToken && !finalToken.startsWith('oauth:')) {
-                finalToken = 'oauth:' + finalToken;
-            }
-
-            client = new tmi.Client({
-                options: { debug: false },
-                identity: { username: twitchUser, password: finalToken },
-                channels: [ channel ]
-            });
-
-            client.connect().catch(err => {
-                status.innerText = "Hiba!";
-                status.className = "text-[10px] text-red-500 uppercase tracking-widest";
-                chatBox.innerHTML = `<div class="text-red-400 bg-red-900/20 p-3 rounded-lg border border-red-500/50">
-                    <strong>Csatlakozási hiba:</strong><br>${err}<br><br>
-                    Ellenőrizd a TWITCH_AUTH_TOKEN-t a Renderen!
-                </div>`;
-            });
-
-            client.on('connected', () => {
-                status.innerText = "Online";
-                status.className = "text-[10px] text-emerald-400 uppercase tracking-widest";
-            });
-
-            client.on('message', (channel, tags, message, self) => {
-                const div = document.createElement('div');
-                div.className = "chat-msg leading-relaxed";
-                const color = tags.color || '#34d399'; // Ha nincs saját színe, legyen emerald
-                div.innerHTML = `<span style="color: ${color}" class="font-bold">${tags['display-name'] || tags.username}</span>: <span class="text-slate-300">${message}</span>`;
-                chatBox.appendChild(div);
-                chatBox.scrollTop = chatBox.scrollHeight;
-            });
         }
-
-        function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const msg = input.value.trim();
-            if (msg && client && currentChannel) {
-                client.say(currentChannel, msg).catch(e => {
-                    alert("Nem sikerült elküldeni! Lehet, hogy lejárt a Tokened?");
-                });
-                input.value = "";
-            }
-        }
-
-        document.getElementById('messageInput').addEventListener("keypress", (e) => {
-            if (e.key === "Enter") sendMessage();
-        });
 
         function closeChat() {
             document.getElementById('chatModal').classList.add('hidden');
-            if (client) client.disconnect();
+            document.getElementById('chatContainer').innerHTML = ''; // Töröljük a RAM miatt
         }
     </script>
 </body>
