@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from datetime import timedelta
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from pymongo import MongoClient
 from dotenv import load_dotenv
@@ -10,18 +11,17 @@ load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'default_secret_key_2026_szaby')
+# 30 napig megjegyzi a bejelentkezést, ha bepipálod!
+app.permanent_session_lifetime = timedelta(days=30)
 
-# MongoDB Kapcsolat
 mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
 client = MongoClient(mongo_url)
 db = client['twitch_miner_web']
 twitch_data_collection = db['twitch_data']
 
-# Admin adatok a weboldalhoz
 ADMIN_USER = os.getenv('WEB_USERNAME', 'szaby')
 ADMIN_PASS = os.getenv('WEB_PASSWORD', '2003')
 
-# Twitch adatok az automata chathez
 TWITCH_USERNAME = os.getenv('TWITCH_USERNAME', '0szaby0')
 TWITCH_AUTH_TOKEN = os.getenv('TWITCH_AUTH_TOKEN', '')
 
@@ -82,11 +82,18 @@ def log_error():
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
+    error = None
     if request.method == 'POST':
         if request.form.get('username') == ADMIN_USER and request.form.get('password') == ADMIN_PASS:
+            session.clear()
+            if request.form.get('remember'):
+                session.permanent = True  # Beállítja a 30 napos megjegyzést
             session['username'] = ADMIN_USER
             return redirect(url_for('home'))
-    return render_template('login.html')
+        else:
+            error = "Hibás felhasználónév vagy jelszó!"
+            
+    return render_template('login.html', error=error)
 
 @app.route('/logout')
 def logout():
