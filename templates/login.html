@@ -2,28 +2,81 @@
 <html lang="hu">
 <head>
     <meta charset="UTF-8">
-    <title>Bejelentkezés - Twitch Miner</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bejelentkezés | Miner PRO</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .animate-blob {
+            animation: blob 7s infinite;
+        }
+        .animation-delay-2000 { animation-delay: 2s; }
+        @keyframes blob {
+            0% { transform: translate(0px, 0px) scale(1); }
+            33% { transform: translate(30px, -50px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+            100% { transform: translate(0px, 0px) scale(1); }
+        }
+    </style>
 </head>
-<body class="bg-[#0e0e10] flex items-center justify-center min-h-screen font-sans">
-    <div class="bg-[#18181b] border border-[#303032] p-10 rounded-xl shadow-2xl w-96 text-center">
-        <h2 class="text-3xl font-extrabold text-white mb-8">Jelentkezz be</h2>
-        
-        {% if error %}
-            <div class="bg-red-500 bg-opacity-20 text-red-500 border border-red-500 rounded p-3 mb-6 text-sm font-semibold">
+<body class="overflow-hidden relative">
+
+    <div class="absolute top-0 -left-4 w-72 h-72 bg-emerald-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob"></div>
+    <div class="absolute top-0 -right-4 w-72 h-72 bg-indigo-500 rounded-full mix-blend-multiply filter blur-3xl opacity-20 animate-blob animation-delay-2000"></div>
+
+    <div class="w-full max-w-md p-8 m-4 rounded-[2rem] shadow-2xl glass-panel relative z-10">
+        <div class="text-center mb-10">
+            <div class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/30 mb-4">
+                <svg class="w-8 h-8 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            </div>
+            <h1 class="text-3xl font-black tracking-tighter text-white">MINER <span class="text-emerald-400">PRO</span></h1>
+            <p class="text-slate-400 text-sm font-medium mt-2 tracking-wide uppercase">Rendszer Bejelentkezés</p>
+        </div>
+
+        <form method="POST" action="/login" class="space-y-6">
+            {% if error %}
+            <div class="bg-red-500/10 border border-red-500/30 text-red-400 text-sm p-4 rounded-2xl text-center font-bold">
                 {{ error }}
             </div>
-        {% endif %}
-        
-        <form method="POST" action="/login" class="flex flex-col gap-5">
-            <input type="text" name="username" placeholder="Felhasználónév" required 
-                class="p-3 bg-[#0e0e10] text-white border border-[#303032] rounded focus:outline-none focus:border-[#bf94ff] transition">
-            <input type="password" name="password" placeholder="Jelszó" required 
-                class="p-3 bg-[#0e0e10] text-white border border-[#303032] rounded focus:outline-none focus:border-[#bf94ff] transition">
+            {% endif %}
             
-            <button type="submit" 
-                class="bg-[#bf94ff] text-black font-extrabold py-3 rounded-lg mt-4 hover:bg-[#a67ce6] transition duration-200 shadow-lg">
-                Belépés
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Felhasználónév</label>
+                    <input type="text" name="username" required
+                        class="w-full bg-slate-900/50 border border-slate-700 text-white rounded-2xl px-5 py-3.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-slate-600 font-medium"
+                        placeholder="Admin név...">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2 ml-1">Jelszó</label>
+                    <input type="password" name="password" required
+                        class="w-full bg-slate-900/50 border border-slate-700 text-white rounded-2xl px-5 py-3.5 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition-all placeholder-slate-600 font-medium"
+                        placeholder="••••••••">
+                </div>
+            </div>
+
+            <div class="flex items-center ml-1">
+                <input type="checkbox" id="remember" name="remember" class="w-4 h-4 rounded border-slate-700 bg-slate-900 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-slate-900">
+                <label for="remember" class="ml-2 block text-sm text-slate-300 font-medium cursor-pointer">
+                    Maradjak bejelentkezve
+                </label>
+            </div>
+
+            <button type="submit" class="w-full bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-slate-900 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all duration-300 shadow-[0_10px_30px_rgba(16,185,129,0.3)] active:scale-95">
+                Belépés az Irányítópultra
             </button>
         </form>
     </div>
