@@ -11,15 +11,17 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', 'default_secret_key_2026_szaby')
 
+# MongoDB Kapcsolat
 mongo_url = os.getenv('MONGO_URI', 'mongodb://mongodb:27017/')
 client = MongoClient(mongo_url)
 db = client['twitch_miner_web']
 twitch_data_collection = db['twitch_data']
 
+# Admin adatok a weboldalhoz
 ADMIN_USER = os.getenv('WEB_USERNAME', 'szaby')
 ADMIN_PASS = os.getenv('WEB_PASSWORD', '2003')
 
-# --- AUTOMATA CHAT ADATOK ---
+# Twitch adatok az automata chathez
 TWITCH_USERNAME = os.getenv('TWITCH_USERNAME', '0szaby0')
 TWITCH_AUTH_TOKEN = os.getenv('TWITCH_AUTH_TOKEN', '')
 
@@ -30,7 +32,6 @@ def home():
         processed_accounts = []
         for acc in accounts:
             acc['_id'] = str(acc['_id'])
-            
             history = acc.get('history', [0])
             current_points = history[-1] if history else 0
             
@@ -39,7 +40,6 @@ def home():
             acc['formatted_points'] = f"{current_points:,}".replace(',', ' ')
             acc['diff'] = history[-1] - history[-2] if len(history) >= 2 else 0
             acc['is_online'] = acc.get('is_online', False)
-            
             processed_accounts.append(acc)
         
         processed_accounts.sort(key=lambda x: (x.get('is_online', False), x.get('current_points', 0)), reverse=True)
@@ -48,8 +48,8 @@ def home():
             'dashboard.html', 
             username=session['username'], 
             accounts=processed_accounts,
-            twitch_name=TWITCH_USERNAME,   # Küldjük a nevet
-            twitch_token=TWITCH_AUTH_TOKEN # Küldjük a tokent
+            twitch_name=TWITCH_USERNAME,
+            twitch_token=TWITCH_AUTH_TOKEN
         )
     return redirect(url_for('login'))
 
@@ -57,13 +57,11 @@ def home():
 def api_data():
     if 'username' not in session:
         return jsonify({"error": "Nincs bejelentkezve"}), 401
-        
     accounts = list(twitch_data_collection.find({}))
     processed_accounts = []
     for acc in accounts:
         history = acc.get('history', [0])
         current_points = history[-1] if history else 0
-        
         processed_accounts.append({
             "channel_name": acc['channel_name'],
             "current_points": current_points,
@@ -73,6 +71,14 @@ def api_data():
             "chart_data": history[-40:] if len(history) > 0 else [0]
         })
     return jsonify(processed_accounts)
+
+@app.route('/api/log_error', methods=['POST'])
+def log_error():
+    data = request.json
+    error_msg = data.get('error', 'Ismeretlen hiba')
+    channel = data.get('channel', 'Ismeretlen csatorna')
+    print(f"\n{'='*50}\n!!! FRONTEND CHAT HIBA ({channel}) !!!\nHIBA OKA: {error_msg}\n{'='*50}\n")
+    return jsonify({"status": "ok"})
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
